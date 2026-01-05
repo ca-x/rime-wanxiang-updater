@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Windows 平台
+          - goos: windows
+            goarch: amd64
+            output_name: rime-wanxiang-updater-windows-amd64.exe
+          - goos: windows
+            goarch: arm64
+            output_name: rime-wanxiang-updater-windows-arm64.exe
+
+          # macOS 平台
+          - goos: darwin
+            goarch: amd64
+            output_name: rime-wanxiang-updater-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            output_name: rime-wanxiang-updater-darwin-arm64
+
+          # Linux 平台
+          - goos: linux
+            goarch: amd64
+            output_name: rime-wanxiang-updater-linux-amd64
+          - goos: linux
+            goarch: arm64
+            output_name: rime-wanxiang-updater-linux-arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.5'
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -v -trimpath -ldflags="-s -w -X main.Version=${{ github.ref_name }}" \
+            -o dist/${{ matrix.output_name }} \
+            ./cmd/rime-wanxiang-updater
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.output_name }}
+          path: dist/${{ matrix.output_name }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
