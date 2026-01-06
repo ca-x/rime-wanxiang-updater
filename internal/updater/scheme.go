@@ -184,7 +184,7 @@ func (s *SchemeUpdater) applyUpdate(temp, target string, progress types.Progress
 	if fileutil.FileExists(target) {
 		os.Remove(target)
 	}
-	if err := os.Rename(temp, target); err != nil {
+	if err := fileutil.MoveFile(temp, target); err != nil {
 		return fmt.Errorf("重命名失败: %w", err)
 	}
 

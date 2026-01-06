@@ -180,7 +180,7 @@ func (m *ModelUpdater) applyUpdate(temp, target string, progress types.ProgressF
 	if fileutil.FileExists(target) {
 		os.Remove(target)
 	}
-	if err := os.Rename(temp, target); err != nil {
+	if err := fileutil.MoveFile(temp, target); err != nil {
 		return fmt.Errorf("替换文件失败: %w", err)
 	}
 
