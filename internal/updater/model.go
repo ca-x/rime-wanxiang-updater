@@ -2,7 +2,6 @@ package updater
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -51,7 +50,7 @@ func (m *ModelUpdater) GetStatus() (*types.UpdateStatus, error) {
 		if status.NeedsUpdate {
 			status.Message = fmt.Sprintf("发现新版本: %s → %s (更新时间: %s)", localRecord.Tag, remoteInfo.Tag, remoteInfo.UpdateTime.Format("2006-01-02"))
 		} else {
-			status.Message = "已是最新版本"
+			status.Message = fmt.Sprintf("已是最新版本 (当前版本: %s)", remoteInfo.Tag)
 		}
 	} else {
 		status.LocalVersion = "未安装"
@@ -69,19 +68,15 @@ func (m *ModelUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 	if m.Config.Config.UseMirror {
 		// CNB 镜像：模型文件不在版本列表中，使用静态下载地址
 		modelURL := fmt.Sprintf("https://cnb.cool/%s/%s/-/releases/download/model/%s", types.OWNER, types.CNB_REPO, types.MODEL_FILE)
-
-		// 尝试获取远程文件的最后修改时间
+		// 用户可以通过检查本地文件的哈希值来避免重复下载
 		updateTime := time.Now()
-		resp, headErr := m.APIClient.Head(modelURL)
-		if headErr == nil && resp.StatusCode == http.StatusOK {
+		if resp, err := m.APIClient.Head(modelURL); err == nil {
 			if lastModified := resp.Header.Get("Last-Modified"); lastModified != "" {
-				if t, parseErr := time.Parse(time.RFC1123, lastModified); parseErr == nil {
+				if t, err := time.Parse(time.RFC1123, lastModified); err == nil {
 					updateTime = t
 				}
 			}
 		}
-		// 如果 HEAD 请求失败或返回错误状态码，使用当前时间
-		// 这会导致总是尝试下载，但通过后续的文件验证避免重复下载
 
 		return &types.UpdateInfo{
 			Name:       types.MODEL_FILE,

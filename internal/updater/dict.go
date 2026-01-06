@@ -49,7 +49,7 @@ func (d *DictUpdater) GetStatus() (*types.UpdateStatus, error) {
 		if status.NeedsUpdate {
 			status.Message = fmt.Sprintf("发现新版本: %s → %s", localRecord.Tag, remoteInfo.Tag)
 		} else {
-			status.Message = "已是最新版本"
+			status.Message = fmt.Sprintf("已是最新版本 (当前版本: %s)", remoteInfo.Tag)
 		}
 	} else {
 		status.LocalVersion = "未安装"

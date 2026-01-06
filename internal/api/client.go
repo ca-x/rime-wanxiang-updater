@@ -28,9 +28,12 @@ func NewClient(config *types.Config) *Client {
 
 // GetHTTPClient 返回配置了代理的 HTTP 客户端
 func getHTTPClient(config *types.Config) *http.Client {
+	// 使用更短的超时时间（10秒）来避免长时间卡住
+	timeout := 10 * time.Second
+
 	if !config.ProxyEnabled {
 		return &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: timeout,
 		}
 	}
 
@@ -40,7 +43,7 @@ func getHTTPClient(config *types.Config) *http.Client {
 	case "http", "https":
 		proxyURL, err := url.Parse(fmt.Sprintf("http://%s", config.ProxyAddress))
 		if err != nil {
-			return &http.Client{Timeout: 30 * time.Second}
+			return &http.Client{Timeout: timeout}
 		}
 		transport = &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
@@ -49,19 +52,19 @@ func getHTTPClient(config *types.Config) *http.Client {
 	case "socks5":
 		dialer, err := proxy.SOCKS5("tcp", config.ProxyAddress, nil, proxy.Direct)
 		if err != nil {
-			return &http.Client{Timeout: 30 * time.Second}
+			return &http.Client{Timeout: timeout}
 		}
 		transport = &http.Transport{
 			Dial: dialer.Dial,
 		}
 
 	default:
-		return &http.Client{Timeout: 30 * time.Second}
+		return &http.Client{Timeout: timeout}
 	}
 
 	return &http.Client{
 		Transport: transport,
-		Timeout:   30 * time.Second,
+		Timeout:   timeout,
 	}
 }
 

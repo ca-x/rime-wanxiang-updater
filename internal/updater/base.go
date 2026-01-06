@@ -95,15 +95,42 @@ func (b *BaseUpdater) SaveRecord(recordPath string, propertyType, propertyName s
 
 // DownloadFile 下载文件
 func (b *BaseUpdater) DownloadFile(url, dest, fileName, source string, progress types.ProgressFunc) error {
-	// 使用 API 客户端的 HTTP 客户端进行下载
-	req, err := b.APIClient.Get(url)
+	// 为下载创建一个没有超时限制的 HTTP 客户端
+	// 因为大文件下载可能需要很长时间
+	downloadClient := &http.Client{
+		Timeout: 0, // 无超时限制
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// 允许最多10次重定向（Go默认）
+			if len(via) >= 10 {
+				return fmt.Errorf("重定向次数过多")
+			}
+			return nil
+		},
+	}
+
+	// 创建下载请求
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("创建下载请求失败: %w", err)
 	}
-	defer req.Body.Close()
+
+	// 设置 User-Agent
+	req.Header.Set("User-Agent", "RIME-Updater/1.0")
+
+	// 发送请求
+	resp, err := downloadClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("下载请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查响应状态
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		return fmt.Errorf("下载失败，HTTP 状态码: %d", resp.StatusCode)
+	}
 
 	// 获取文件总大小
-	totalSize := req.ContentLength
+	totalSize := resp.ContentLength
 
 	// 检查是否支持断点续传
 	var downloaded int64 = 0
@@ -113,7 +140,7 @@ func (b *BaseUpdater) DownloadFile(url, dest, fileName, source string, progress 
 
 	// 检查服务器响应
 	var out *os.File
-	if req.StatusCode == http.StatusPartialContent {
+	if resp.StatusCode == http.StatusPartialContent {
 		out, err = os.OpenFile(dest, os.O_APPEND|os.O_WRONLY, 0644)
 	} else {
 		downloaded = 0
@@ -131,7 +158,7 @@ func (b *BaseUpdater) DownloadFile(url, dest, fileName, source string, progress 
 	lastUpdate := time.Now()
 
 	for {
-		n, err := req.Body.Read(buf)
+		n, err := resp.Body.Read(buf)
 		if n > 0 {
 			if _, err := out.Write(buf[:n]); err != nil {
 				return fmt.Errorf("写入文件失败: %w", err)

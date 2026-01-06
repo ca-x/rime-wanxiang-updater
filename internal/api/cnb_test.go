@@ -23,7 +23,7 @@ func TestFetchCNBReleases(t *testing.T) {
 	client := NewClient(getTestConfig())
 
 	// 测试获取 rime-wanxiang 仓库的所有 releases
-	releases, err := client.FetchCNBReleases("amzxyz", "rime-wanxiang", "model")
+	releases, err := client.FetchCNBReleases("amzxyz", "rime-wanxiang", "")
 	if err != nil {
 		t.Fatalf("获取 CNB releases 失败: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestFetchCNBReleases(t *testing.T) {
 func TestFetchCNBReleasesDebug(t *testing.T) {
 	client := NewClient(getTestConfig())
 
-	releases, err := client.FetchCNBReleases("amzxyz", "rime-wanxiang", "model")
+	releases, err := client.FetchCNBReleases("amzxyz", "rime-wanxiang", "v1.0.0")
 	if err != nil {
 		t.Fatalf("获取 CNB releases 失败: %v", err)
 	}

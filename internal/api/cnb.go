@@ -15,11 +15,11 @@ import (
 func (c *Client) FetchCNBReleases(owner, repo, tag string) ([]types.GitHubRelease, error) {
 	url := fmt.Sprintf("https://cnb.cool/%s/%s/-/releases", owner, repo)
 
-	b := backoff.New(time.Second, 10*time.Second)
+	b := backoff.New(500*time.Millisecond, 2*time.Second)
 	var resp *http.Response
 	var err error
 	attempts := 0
-	maxAttempts := 3
+	maxAttempts := 2 // 减少到2次尝试，避免等待过久
 
 	// 使用重试机制
 	for attempts < maxAttempts {

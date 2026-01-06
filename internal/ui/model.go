@@ -105,9 +105,10 @@ type UpdateMsg struct {
 }
 
 type UpdateCompleteMsg struct {
-	err        error
-	updateType string // 更新类型：词库、方案、模型、自动
-	skipped    bool   // 是否跳过更新（已是最新版本）
+	err           error
+	updateType    string // 更新类型：词库、方案、模型、自动
+	skipped       bool   // 是否跳过更新（已是最新版本）
+	statusMessage string // 状态消息（包含版本信息）
 }
 
 // Update 更新模型
@@ -187,7 +188,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resultMsg = fmt.Sprintf("%s更新失败: %v", msg.updateType, msg.err)
 		} else if msg.skipped {
 			m.resultSuccess = true
-			m.resultMsg = fmt.Sprintf("%s已是最新版本，无需更新", msg.updateType)
+			// 如果有状态消息，使用它（包含版本号）
+			if msg.statusMessage != "" {
+				m.resultMsg = fmt.Sprintf("%s%s", msg.updateType, msg.statusMessage)
+			} else {
+				m.resultMsg = fmt.Sprintf("%s已是最新版本，无需更新", msg.updateType)
+			}
 		} else {
 			m.resultSuccess = true
 			m.resultMsg = fmt.Sprintf("%s更新完成！", msg.updateType)
@@ -557,7 +563,7 @@ func (m Model) handleResultInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // runDictUpdate 运行词库更新
-func (m Model) runDictUpdate() tea.Cmd {
+func (m *Model) runDictUpdate() tea.Cmd {
 	// 创建通道
 	m.progressChan = make(chan UpdateMsg, 100)
 	m.completionChan = make(chan UpdateCompleteMsg, 1)
@@ -587,7 +593,7 @@ func (m Model) runDictUpdate() tea.Cmd {
 		// 检查是否需要更新
 		status, err := dictUpdater.GetStatus()
 		if err != nil {
-			m.completionChan <- UpdateCompleteMsg{err: err, updateType: "词库", skipped: false}
+			m.completionChan <- UpdateCompleteMsg{err: err, updateType: "词库", skipped: false, statusMessage: ""}
 			close(m.progressChan)
 			return
 		}
@@ -595,7 +601,7 @@ func (m Model) runDictUpdate() tea.Cmd {
 		// 如果不需要更新，直接返回
 		if !status.NeedsUpdate {
 			progressFunc("词库已是最新版本，跳过更新", 1.0, "", "", 0, 0, 0, false)
-			m.completionChan <- UpdateCompleteMsg{err: nil, updateType: "词库", skipped: true}
+			m.completionChan <- UpdateCompleteMsg{err: nil, updateType: "词库", skipped: true, statusMessage: status.Message}
 			close(m.progressChan)
 			return
 		}
@@ -606,7 +612,7 @@ func (m Model) runDictUpdate() tea.Cmd {
 		}
 
 		// 发送完成消息
-		m.completionChan <- UpdateCompleteMsg{err: err, updateType: "词库", skipped: false}
+		m.completionChan <- UpdateCompleteMsg{err: err, updateType: "词库", skipped: false, statusMessage: ""}
 		close(m.progressChan)
 	}()
 
@@ -637,7 +643,7 @@ func listenForProgress(progressChan chan UpdateMsg, completeChan chan UpdateComp
 }
 
 // runSchemeUpdate 运行方案更新
-func (m Model) runSchemeUpdate() tea.Cmd {
+func (m *Model) runSchemeUpdate() tea.Cmd {
 	// 创建通道
 	m.progressChan = make(chan UpdateMsg, 100)
 	m.completionChan = make(chan UpdateCompleteMsg, 1)
@@ -667,7 +673,7 @@ func (m Model) runSchemeUpdate() tea.Cmd {
 		// 检查是否需要更新
 		status, err := schemeUpdater.GetStatus()
 		if err != nil {
-			m.completionChan <- UpdateCompleteMsg{err: err, updateType: "方案", skipped: false}
+			m.completionChan <- UpdateCompleteMsg{err: err, updateType: "方案", skipped: false, statusMessage: ""}
 			close(m.progressChan)
 			return
 		}
@@ -675,7 +681,7 @@ func (m Model) runSchemeUpdate() tea.Cmd {
 		// 如果不需要更新，直接返回
 		if !status.NeedsUpdate {
 			progressFunc("方案已是最新版本，跳过更新", 1.0, "", "", 0, 0, 0, false)
-			m.completionChan <- UpdateCompleteMsg{err: nil, updateType: "方案", skipped: true}
+			m.completionChan <- UpdateCompleteMsg{err: nil, updateType: "方案", skipped: true, statusMessage: status.Message}
 			close(m.progressChan)
 			return
 		}
@@ -686,7 +692,7 @@ func (m Model) runSchemeUpdate() tea.Cmd {
 		}
 
 		// 发送完成消息
-		m.completionChan <- UpdateCompleteMsg{err: err, updateType: "方案", skipped: false}
+		m.completionChan <- UpdateCompleteMsg{err: err, updateType: "方案", skipped: false, statusMessage: ""}
 		close(m.progressChan)
 	}()
 
@@ -695,7 +701,7 @@ func (m Model) runSchemeUpdate() tea.Cmd {
 }
 
 // runModelUpdate 运行模型更新
-func (m Model) runModelUpdate() tea.Cmd {
+func (m *Model) runModelUpdate() tea.Cmd {
 	// 创建通道
 	m.progressChan = make(chan UpdateMsg, 100)
 	m.completionChan = make(chan UpdateCompleteMsg, 1)
@@ -729,7 +735,7 @@ func (m Model) runModelUpdate() tea.Cmd {
 		}
 
 		// 发送完成消息
-		m.completionChan <- UpdateCompleteMsg{err: err, updateType: "模型", skipped: false}
+		m.completionChan <- UpdateCompleteMsg{err: err, updateType: "模型", skipped: false, statusMessage: ""}
 		close(m.progressChan)
 	}()
 
@@ -738,7 +744,7 @@ func (m Model) runModelUpdate() tea.Cmd {
 }
 
 // runAutoUpdate 运行自动更新
-func (m Model) runAutoUpdate() tea.Cmd {
+func (m *Model) runAutoUpdate() tea.Cmd {
 	// 创建通道
 	m.progressChan = make(chan UpdateMsg, 100)
 	m.completionChan = make(chan UpdateCompleteMsg, 1)
@@ -747,18 +753,18 @@ func (m Model) runAutoUpdate() tea.Cmd {
 	go func() {
 		combined := updater.NewCombinedUpdater(m.cfg)
 
-		// 进度回调 - 简化版本，用于组合更新
-		progressFunc := func(component, message string, percent float64) {
+		// 进度回调 - 完整版本，包含下载详情
+		progressFunc := func(component, message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
 			select {
 			case m.progressChan <- UpdateMsg{
 				message:      fmt.Sprintf("[%s] %s", component, message),
 				percent:      percent,
-				source:       "",
-				fileName:     "",
-				downloaded:   0,
-				total:        0,
-				speed:        0,
-				downloadMode: false,
+				source:       source,
+				fileName:     fileName,
+				downloaded:   downloaded,
+				total:        total,
+				speed:        speed,
+				downloadMode: downloadMode,
 			}:
 			default:
 				// Channel 满了，跳过
@@ -766,17 +772,17 @@ func (m Model) runAutoUpdate() tea.Cmd {
 		}
 
 		// 检查所有更新
-		progressFunc("检查", "正在检查所有更新...", 0.0)
+		progressFunc("检查", "正在检查所有更新...", 0.0, "", "", 0, 0, 0, false)
 		if err := combined.FetchAllUpdates(); err != nil {
-			m.completionChan <- UpdateCompleteMsg{err: err, updateType: "自动", skipped: false}
+			m.completionChan <- UpdateCompleteMsg{err: err, updateType: "自动", skipped: false, statusMessage: ""}
 			close(m.progressChan)
 			return
 		}
 
 		// 检查是否有任何更新
 		if !combined.HasAnyUpdate() {
-			progressFunc("完成", "所有组件已是最新版本", 1.0)
-			m.completionChan <- UpdateCompleteMsg{err: nil, updateType: "所有组件", skipped: true}
+			progressFunc("完成", "所有组件已是最新版本", 1.0, "", "", 0, 0, 0, false)
+			m.completionChan <- UpdateCompleteMsg{err: nil, updateType: "所有组件", skipped: true, statusMessage: "已是最新版本"}
 			close(m.progressChan)
 			return
 		}
@@ -785,7 +791,7 @@ func (m Model) runAutoUpdate() tea.Cmd {
 		err := combined.RunAllWithProgress(progressFunc)
 
 		// 发送完成消息
-		m.completionChan <- UpdateCompleteMsg{err: err, updateType: "自动", skipped: false}
+		m.completionChan <- UpdateCompleteMsg{err: err, updateType: "自动", skipped: false, statusMessage: ""}
 		close(m.progressChan)
 	}()
 
@@ -819,9 +825,10 @@ func (m Model) renderWizard() string {
 	// ASCII Logo
 	logo := logoStyle.Render(asciiLogo)
 	b.WriteString(logo + "\n")
-	// 版本信息
-	appVersion := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(appVersion) + "\n\n")
+
+	// 启动序列状态
+	bootSeq := RenderBootSequence(version.GetVersion())
+	b.WriteString(bootSeq + "\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
@@ -834,8 +841,8 @@ func (m Model) renderWizard() string {
 
 	switch m.wizardStep {
 	case WizardSchemeType:
-		wizardTitle := titleStyle.Render("⚡ 初始化向导 ⚡")
-		b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(wizardTitle) + "\n\n")
+		wizardTitle := RenderGradientTitle("⚡ 初始化向导 ⚡")
+		b.WriteString(wizardTitle + "\n\n")
 
 		question := infoBoxStyle.Render("▸ 选择方案版本:")
 		b.WriteString(question + "\n\n")
@@ -848,8 +855,8 @@ func (m Model) renderWizard() string {
 		b.WriteString(hint)
 
 	case WizardSchemeVariant:
-		wizardTitle := titleStyle.Render("⚡ 初始化向导 ⚡")
-		b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(wizardTitle) + "\n\n")
+		wizardTitle := RenderGradientTitle("⚡ 初始化向导 ⚡")
+		b.WriteString(wizardTitle + "\n\n")
 
 		question := infoBoxStyle.Render("▸ 选择辅助码方案:")
 		b.WriteString(question + "\n\n")
@@ -863,8 +870,8 @@ func (m Model) renderWizard() string {
 		b.WriteString(hint)
 
 	case WizardDownloadSource:
-		wizardTitle := titleStyle.Render("⚡ 初始化向导 ⚡")
-		b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(wizardTitle) + "\n\n")
+		wizardTitle := RenderGradientTitle("⚡ 初始化向导 ⚡")
+		b.WriteString(wizardTitle + "\n\n")
 
 		question := infoBoxStyle.Render("▸ 选择下载源:")
 		b.WriteString(question + "\n\n")
@@ -888,29 +895,16 @@ func (m Model) renderMenu() string {
 	logo := logoStyle.Render(asciiLogo)
 	b.WriteString(logo + "\n")
 
-	// 版本和状态信息
-	appVersion := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(appVersion) + "\n")
-
-	// 系统配置概览
-	configInfo := fmt.Sprintf("引擎: %s | 方案: %s | 下载源: %s",
-		m.cfg.Config.Engine,
-		m.cfg.Config.SchemeType,
-		func() string {
-			if m.cfg.Config.UseMirror {
-				return "CNB镜像"
-			}
-			return "GitHub"
-		}())
-	statusInfo := statusOnlineStyle.Render("⬢ " + configInfo + " ⬢")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(statusInfo) + "\n\n")
+	// 启动序列状态
+	bootSeq := RenderBootSequence(version.GetVersion())
+	b.WriteString(bootSeq + "\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
 
 	// 主菜单标题
-	menuTitle := titleStyle.Render("⚡ 主控制面板 ⚡")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(menuTitle) + "\n\n")
+	menuTitle := RenderGradientTitle("⚡ 主控制面板 ⚡")
+	b.WriteString(menuTitle + "\n\n")
 
 	// 菜单项
 	menuItems := []struct {
@@ -939,7 +933,20 @@ func (m Model) renderMenu() string {
 
 	// 提示
 	hint := hintStyle.Render("[>] Input: 1-6 | Navigate: J/K or Arrow Keys | [Q] Quit")
-	b.WriteString(hint)
+	b.WriteString(hint + "\n\n")
+
+	// 状态栏
+	statusBar := RenderStatusBar(
+		fmt.Sprintf("v%s", version.GetVersion()),
+		m.cfg.Config.Engine,
+		func() string {
+			if m.cfg.Config.UseMirror {
+				return "CNB镜像"
+			}
+			return "GitHub"
+		}(),
+	)
+	b.WriteString(statusBar)
 
 	return containerStyle.Render(b.String())
 }
@@ -952,9 +959,10 @@ func (m Model) renderUpdating() string {
 	logo := logoStyle.Render(asciiLogo)
 	b.WriteString(logo + "\n")
 
-	// 版本信息
-	appVersion := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(appVersion) + "\n")
+	// 启动序列状态
+	bootSeq := RenderBootSequence(version.GetVersion())
+	b.WriteString(bootSeq + "\n")
+
 	// 处理状态指示器
 	status := statusProcessingStyle.Render("⬢ 处理中 ⬢")
 	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(status) + "\n\n")
@@ -963,8 +971,8 @@ func (m Model) renderUpdating() string {
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
 
 	// 更新标题
-	title := titleStyle.Render("⚡ 正在更新 ⚡")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(title) + "\n\n")
+	title := RenderGradientTitle("⚡ 正在更新 ⚡")
+	b.WriteString(title + "\n\n")
 
 	// 显示进度信息 - 只用一个框显示所有信息
 	msgBox := lipgloss.NewStyle().
@@ -1041,16 +1049,16 @@ func (m Model) renderConfig() string {
 	logo := logoStyle.Render(asciiLogo)
 	b.WriteString(logo + "\n")
 
-	// 版本信息
-	appVersion := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(appVersion) + "\n\n")
+	// 启动序列状态
+	bootSeq := RenderBootSequence(version.GetVersion())
+	b.WriteString(bootSeq + "\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
 
 	// 标题
-	title := titleStyle.Render("⚡ 系统配置 ⚡")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(title) + "\n\n")
+	title := RenderGradientTitle("⚡ 系统配置 ⚡")
+	b.WriteString(title + "\n\n")
 
 	// 配置项 - 重新组织，标记可编辑项
 	editableConfigs := []struct {
@@ -1192,16 +1200,16 @@ func (m Model) renderConfigEdit() string {
 	logo := logoStyle.Render(asciiLogo)
 	b.WriteString(logo + "\n")
 
-	// 版本信息
-	appVersion := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(appVersion) + "\n\n")
+	// 启动序列状态
+	bootSeq := RenderBootSequence(version.GetVersion())
+	b.WriteString(bootSeq + "\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
 
 	// 标题
-	title := titleStyle.Render("⚡ 编辑配置 ⚡")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(title) + "\n\n")
+	title := RenderGradientTitle("⚡ 编辑配置 ⚡")
+	b.WriteString(title + "\n\n")
 
 	// 获取配置项名称
 	var configName string
@@ -1302,16 +1310,16 @@ func (m Model) renderResult() string {
 	logo := logoStyle.Render(asciiLogo)
 	b.WriteString(logo + "\n")
 
-	// 版本信息
-	appVersion := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(appVersion) + "\n\n")
+	// 启动序列状态
+	bootSeq := RenderBootSequence(version.GetVersion())
+	b.WriteString(bootSeq + "\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
 
 	// 结果标题
-	title := titleStyle.Render("⚡ 更新结果 ⚡")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(title) + "\n\n")
+	title := RenderGradientTitle("⚡ 更新结果 ⚡")
+	b.WriteString(title + "\n\n")
 
 	// 结果消息 - 根据成功/失败使用不同样式
 	var resultBox lipgloss.Style
