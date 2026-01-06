@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -46,18 +47,18 @@ type Model struct {
 	editingValue     string // 编辑中的值
 	schemeChoice     string
 	variantChoice    string
-	mirrorChoice     bool   // 是否使用镜像
+	mirrorChoice     bool // 是否使用镜像
 	updating         bool
 	progress         progress.Model
 	progressMsg      string
-	downloadSource   string  // 下载源
-	downloadFileName string  // 下载文件名
-	downloaded       int64   // 已下载字节
-	totalSize        int64   // 总大小字节
-	downloadSpeed    float64 // 下载速度
-	isDownloading    bool    // 是否在下载中
-	progressChan     chan UpdateMsg          // 进度通道
-	completionChan   chan UpdateCompleteMsg  // 完成通道
+	downloadSource   string                 // 下载源
+	downloadFileName string                 // 下载文件名
+	downloaded       int64                  // 已下载字节
+	totalSize        int64                  // 总大小字节
+	downloadSpeed    float64                // 下载速度
+	isDownloading    bool                   // 是否在下载中
+	progressChan     chan UpdateMsg         // 进度通道
+	completionChan   chan UpdateCompleteMsg // 完成通道
 	err              error
 	resultMsg        string // 结果消息
 	resultSuccess    bool   // 是否成功
@@ -260,20 +261,20 @@ func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "1":
 		m.state = ViewUpdating
+		m.progressMsg = "检查所有更新..."
+		return m, m.runAutoUpdate()
+	case "2":
+		m.state = ViewUpdating
 		m.progressMsg = "检查词库更新..."
 		return m, m.runDictUpdate()
-	case "2":
+	case "3":
 		m.state = ViewUpdating
 		m.progressMsg = "检查方案更新..."
 		return m, m.runSchemeUpdate()
-	case "3":
+	case "4":
 		m.state = ViewUpdating
 		m.progressMsg = "检查模型更新..."
 		return m, m.runModelUpdate()
-	case "4":
-		m.state = ViewUpdating
-		m.progressMsg = "检查所有更新..."
-		return m, m.runAutoUpdate()
 	case "5":
 		m.state = ViewConfig
 		return m, nil
@@ -291,20 +292,20 @@ func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch m.menuChoice {
 		case 0:
 			m.state = ViewUpdating
+			m.progressMsg = "检查所有更新..."
+			return m, m.runAutoUpdate()
+		case 1:
+			m.state = ViewUpdating
 			m.progressMsg = "检查词库更新..."
 			return m, m.runDictUpdate()
-		case 1:
+		case 2:
 			m.state = ViewUpdating
 			m.progressMsg = "检查方案更新..."
 			return m, m.runSchemeUpdate()
-		case 2:
+		case 3:
 			m.state = ViewUpdating
 			m.progressMsg = "检查模型更新..."
 			return m, m.runModelUpdate()
-		case 3:
-			m.state = ViewUpdating
-			m.progressMsg = "检查所有更新..."
-			return m, m.runAutoUpdate()
 		case 4:
 			m.state = ViewConfig
 			return m, nil
@@ -331,6 +332,12 @@ func (m Model) handleConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		// 可编辑的配置项数量（不包括 Engine 和排除文件）
 		maxChoice := 3 // UseMirror, ProxyEnabled, AutoUpdate
+
+		// Linux 平台添加 fcitx 兼容性配置
+		if runtime.GOOS == "linux" {
+			maxChoice += 2 // FcitxCompat, FcitxUseLink
+		}
+
 		if m.cfg.Config.ProxyEnabled {
 			maxChoice += 2 // ProxyType, ProxyAddress
 		}
@@ -347,6 +354,12 @@ func (m Model) handleConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // startConfigEdit 开始编辑配置
 func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 	configItems := []string{"use_mirror", "auto_update", "proxy_enabled"}
+
+	// Linux 平台添加 fcitx 兼容性配置
+	if runtime.GOOS == "linux" {
+		configItems = append(configItems, "fcitx_compat", "fcitx_use_link")
+	}
+
 	if m.cfg.Config.ProxyEnabled {
 		configItems = append(configItems, "proxy_type", "proxy_address")
 	}
@@ -374,6 +387,18 @@ func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 			} else {
 				m.editingValue = "false"
 			}
+		case "fcitx_compat":
+			if m.cfg.Config.FcitxCompat {
+				m.editingValue = "true"
+			} else {
+				m.editingValue = "false"
+			}
+		case "fcitx_use_link":
+			if m.cfg.Config.FcitxUseLink {
+				m.editingValue = "true"
+			} else {
+				m.editingValue = "false"
+			}
 		case "proxy_type":
 			m.editingValue = m.cfg.Config.ProxyType
 		case "proxy_address":
@@ -387,7 +412,8 @@ func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 
 // handleConfigEditInput 处理配置编辑输入
 func (m Model) handleConfigEditInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	isBooleanField := m.editingKey == "use_mirror" || m.editingKey == "auto_update" || m.editingKey == "proxy_enabled"
+	isBooleanField := m.editingKey == "use_mirror" || m.editingKey == "auto_update" || m.editingKey == "proxy_enabled" ||
+		m.editingKey == "fcitx_compat" || m.editingKey == "fcitx_use_link"
 
 	switch msg.String() {
 	case "ctrl+c":
@@ -442,6 +468,22 @@ func (m Model) saveConfigEdit() (tea.Model, tea.Cmd) {
 		m.cfg.Config.AutoUpdate = m.editingValue == "true"
 	case "proxy_enabled":
 		m.cfg.Config.ProxyEnabled = m.editingValue == "true"
+	case "fcitx_compat":
+		m.cfg.Config.FcitxCompat = m.editingValue == "true"
+		// 如果启用 fcitx 兼容，立即同步
+		if m.cfg.Config.FcitxCompat {
+			if err := m.cfg.SyncToFcitxDir(); err != nil {
+				m.err = err
+			}
+		}
+	case "fcitx_use_link":
+		m.cfg.Config.FcitxUseLink = m.editingValue == "true"
+		// 如果已启用 fcitx 兼容，重新同步以应用链接方式的改变
+		if m.cfg.Config.FcitxCompat {
+			if err := m.cfg.SyncToFcitxDir(); err != nil {
+				m.err = err
+			}
+		}
 	case "proxy_type":
 		m.cfg.Config.ProxyType = m.editingValue
 	case "proxy_address":
@@ -473,7 +515,7 @@ func (m Model) handleResultInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // runDictUpdate 运行词库更新
-func (m *Model) runDictUpdate() tea.Cmd {
+func (m Model) runDictUpdate() tea.Cmd {
 	// 创建通道
 	m.progressChan = make(chan UpdateMsg, 100)
 	m.completionChan = make(chan UpdateCompleteMsg, 1)
@@ -547,7 +589,7 @@ func listenForProgress(progressChan chan UpdateMsg, completeChan chan UpdateComp
 }
 
 // runSchemeUpdate 运行方案更新
-func (m *Model) runSchemeUpdate() tea.Cmd {
+func (m Model) runSchemeUpdate() tea.Cmd {
 	// 创建通道
 	m.progressChan = make(chan UpdateMsg, 100)
 	m.completionChan = make(chan UpdateCompleteMsg, 1)
@@ -605,7 +647,7 @@ func (m *Model) runSchemeUpdate() tea.Cmd {
 }
 
 // runModelUpdate 运行模型更新
-func (m *Model) runModelUpdate() tea.Cmd {
+func (m Model) runModelUpdate() tea.Cmd {
 	// 创建通道
 	m.progressChan = make(chan UpdateMsg, 100)
 	m.completionChan = make(chan UpdateCompleteMsg, 1)
@@ -648,7 +690,7 @@ func (m *Model) runModelUpdate() tea.Cmd {
 }
 
 // runAutoUpdate 运行自动更新
-func (m *Model) runAutoUpdate() tea.Cmd {
+func (m Model) runAutoUpdate() tea.Cmd {
 	// 创建通道
 	m.progressChan = make(chan UpdateMsg, 100)
 	m.completionChan = make(chan UpdateCompleteMsg, 1)
@@ -828,10 +870,10 @@ func (m Model) renderMenu() string {
 		icon string
 		text string
 	}{
+		{"▣", "自动更新"},
 		{"▣", "词库更新"},
 		{"▣", "方案更新"},
 		{"▣", "模型更新"},
-		{"▣", "自动更新"},
 		{"▣", "查看配置"},
 		{"▣", "退出程序"},
 	}
@@ -839,9 +881,9 @@ func (m Model) renderMenu() string {
 	for i, item := range menuItems {
 		itemText := fmt.Sprintf(" %s  [%d] %s", item.icon, i+1, item.text)
 		if i == m.menuChoice {
-			b.WriteString(selectedMenuItemStyle.Render("►" + itemText) + "\n")
+			b.WriteString(selectedMenuItemStyle.Render("►"+itemText) + "\n")
 		} else {
-			b.WriteString(menuItemStyle.Render(" " + itemText) + "\n")
+			b.WriteString(menuItemStyle.Render(" "+itemText) + "\n")
 		}
 	}
 
@@ -981,6 +1023,26 @@ func (m Model) renderConfig() string {
 	}
 
 	editIndex := 3
+
+	// Linux 平台添加 fcitx 兼容性配置
+	if runtime.GOOS == "linux" {
+		editableConfigs = append(editableConfigs,
+			struct {
+				key      string
+				value    string
+				editable bool
+				index    int
+			}{"Fcitx兼容", fmt.Sprintf("%v", m.cfg.Config.FcitxCompat), true, editIndex},
+			struct {
+				key      string
+				value    string
+				editable bool
+				index    int
+			}{"使用软链接", fmt.Sprintf("%v", m.cfg.Config.FcitxUseLink), true, editIndex + 1},
+		)
+		editIndex += 2
+	}
+
 	if m.cfg.Config.ProxyEnabled {
 		editableConfigs = append(editableConfigs,
 			struct {
@@ -1074,6 +1136,14 @@ func (m Model) renderConfigEdit() string {
 	case "proxy_enabled":
 		configName = "代理启用"
 		inputHint = "Select: [1] Enable  [2] Disable | Arrow keys to toggle"
+		isBooleanField = true
+	case "fcitx_compat":
+		configName = "Fcitx兼容"
+		inputHint = "Select: [1] Enable  [2] Disable | Arrow keys to toggle"
+		isBooleanField = true
+	case "fcitx_use_link":
+		configName = "使用软链接"
+		inputHint = "Select: [1] 软链接  [2] 复制文件 | Arrow keys to toggle"
 		isBooleanField = true
 	case "proxy_type":
 		configName = "代理类型"

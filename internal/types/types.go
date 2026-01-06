@@ -4,16 +4,16 @@ import "time"
 
 // 常量定义
 const (
-	VERSION         = "v1.0.0"
-	OWNER           = "amzxyz"
-	REPO            = "rime_wanxiang"
-	CNB_REPO        = "rime-wanxiang"
-	DICT_TAG        = "dict-nightly" // GitHub 词库 tag
-	CNB_DICT_TAG    = "v1.0.0"       // CNB 词库 tag
-	MODEL_REPO      = "RIME-LMDG"
-	MODEL_TAG       = "LTS"
-	MODEL_FILE      = "wanxiang-lts-zh-hans.gram"
-	ZH_DICTS        = "dicts"
+	VERSION      = "v1.0.0"
+	OWNER        = "amzxyz"
+	REPO         = "rime_wanxiang"
+	CNB_REPO     = "rime-wanxiang"
+	DICT_TAG     = "dict-nightly" // GitHub 词库 tag
+	CNB_DICT_TAG = "v1.0.0"       // CNB 词库 tag
+	MODEL_REPO   = "RIME-LMDG"
+	MODEL_TAG    = "LTS"
+	MODEL_FILE   = "wanxiang-lts-zh-hans.gram"
+	ZH_DICTS     = "dicts"
 )
 
 // SchemeMap 方案映射
@@ -40,6 +40,8 @@ type Config struct {
 	ProxyEnabled bool     `json:"proxy_enabled"`
 	ProxyType    string   `json:"proxy_type"`
 	ProxyAddress string   `json:"proxy_address"`
+	FcitxCompat  bool     `json:"fcitx_compat"`   // Linux 专用：兼容 ~/.config/fcitx/rime/
+	FcitxUseLink bool     `json:"fcitx_use_link"` // Linux 专用：使用软链接（true）还是复制（false）
 }
 
 // UpdateInfo 更新信息

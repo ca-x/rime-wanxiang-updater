@@ -103,6 +103,8 @@ func createDefaultConfig() *types.Config {
 		ProxyEnabled: false,
 		ProxyType:    "http",
 		ProxyAddress: "127.0.0.1:7890",
+		FcitxCompat:  false,
+		FcitxUseLink: true, // 默认使用软链接
 	}
 }
 
@@ -252,4 +254,117 @@ func ValidateExcludeFiles(patterns []string) error {
 		}
 	}
 	return nil
+}
+
+// SyncToFcitxDir 同步到 fcitx 兼容目录
+// 仅在 Linux 平台且启用 FcitxCompat 时生效
+func (m *Manager) SyncToFcitxDir() error {
+	// 仅 Linux 平台支持
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+
+	// 未启用 fcitx 兼容
+	if !m.Config.FcitxCompat {
+		return nil
+	}
+
+	// 获取源目录（fcitx5 配置目录）
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("获取用户目录失败: %w", err)
+	}
+
+	sourceDir := m.RimeDir
+	targetDir := filepath.Join(homeDir, ".config", "fcitx", "rime")
+
+	// 检查源目录是否存在
+	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
+		return fmt.Errorf("源目录不存在: %s", sourceDir)
+	}
+
+	// 创建目标父目录
+	if err := os.MkdirAll(filepath.Dir(targetDir), 0755); err != nil {
+		return fmt.Errorf("创建目标父目录失败: %w", err)
+	}
+
+	// 如果目标已存在，先删除
+	if _, err := os.Lstat(targetDir); err == nil {
+		if err := os.RemoveAll(targetDir); err != nil {
+			return fmt.Errorf("删除旧目标失败: %w", err)
+		}
+	}
+
+	// 根据配置选择软链接或复制
+	if m.Config.FcitxUseLink {
+		// 创建软链接
+		if err := os.Symlink(sourceDir, targetDir); err != nil {
+			return fmt.Errorf("创建软链接失败: %w", err)
+		}
+	} else {
+		// 复制目录
+		if err := copyDir(sourceDir, targetDir); err != nil {
+			return fmt.Errorf("复制目录失败: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// copyDir 递归复制目录
+func copyDir(src, dst string) error {
+	// 获取源目录信息
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	// 创建目标目录
+	if err := os.MkdirAll(dst, srcInfo.Mode()); err != nil {
+		return err
+	}
+
+	// 读取源目录内容
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	// 递归复制每个条目
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			// 递归复制子目录
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			// 复制文件
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// copyFile 复制文件
+func copyFile(src, dst string) error {
+	// 读取源文件
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+
+	// 获取源文件权限
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	// 写入目标文件
+	return os.WriteFile(dst, data, srcInfo.Mode())
 }
