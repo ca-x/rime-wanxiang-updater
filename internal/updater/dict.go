@@ -103,6 +103,14 @@ func (d *DictUpdater) Run(progress types.ProgressFunc) error {
 		progress = func(string, float64, string, string, int64, int64, float64, bool) {} // 空函数避免 nil 检查
 	}
 
+	// 执行更新前 hook
+	if d.Config.Config.PreUpdateHook != "" {
+		progress("执行更新前 hook...", 0.02, "", "", 0, 0, 0, false)
+		if err := d.Config.ExecutePreUpdateHook(); err != nil {
+			return fmt.Errorf("pre-update hook 失败，已取消更新: %w", err)
+		}
+	}
+
 	// 显示下载源
 	source := "GitHub"
 	if d.Config.Config.UseMirror {
@@ -187,6 +195,27 @@ func (d *DictUpdater) applyUpdate(temp, target string, progress types.ProgressFu
 
 	// 保存记录
 	recordPath := d.Config.GetDictRecordPath()
+	if err := d.SaveRecord(recordPath, "dict_file", d.Config.Config.DictFile, d.UpdateInfo); err != nil {
+		return err
+	}
+
+	// 执行更新后 hook（失败不影响更新结果）
+	if d.Config.Config.PostUpdateHook != "" {
+		progress("执行更新后 hook...", 1.0, "", "", 0, 0, 0, false)
+		if err := d.Config.ExecutePostUpdateHook(); err != nil {
+			// 只记录错误，不返回失败
+			progress(fmt.Sprintf("post-update hook 失败: %v", err), 1.0, "", "", 0, 0, 0, false)
+		}
+	}
+
+	// 同步到 fcitx 目录（如果启用）
+	if d.Config.Config.FcitxCompat {
+		if err := d.Config.SyncToFcitxDir(); err != nil {
+			// 只记录错误，不返回失败
+			progress(fmt.Sprintf("fcitx 同步失败: %v", err), 1.0, "", "", 0, 0, 0, false)
+		}
+	}
+
 	progress("更新完成！", 1.0, "", "", 0, 0, 0, false)
-	return d.SaveRecord(recordPath, "dict_file", d.Config.Config.DictFile, d.UpdateInfo)
+	return nil
 }

@@ -45,12 +45,25 @@ func (m *ModelUpdater) GetStatus() (*types.UpdateStatus, error) {
 	if localRecord != nil {
 		status.LocalVersion = localRecord.Tag
 		status.LocalTime = localRecord.UpdateTime
-		status.NeedsUpdate = remoteInfo.UpdateTime.After(localRecord.UpdateTime)
 
-		if status.NeedsUpdate {
-			status.Message = fmt.Sprintf("发现新版本: %s → %s (更新时间: %s)", localRecord.Tag, remoteInfo.Tag, remoteInfo.UpdateTime.Format("2006-01-02"))
+		// 对于 CNB 镜像的模型文件，检查本地文件是否存在来判断是否需要更新
+		// 因为 CNB 不提供准确的更新时间
+		if m.Config.Config.UseMirror {
+			targetPath := filepath.Join(m.Config.GetExtractPath(), types.MODEL_FILE)
+			if fileutil.FileExists(targetPath) {
+				status.NeedsUpdate = false
+				status.Message = "已是最新版本"
+			} else {
+				status.NeedsUpdate = true
+				status.Message = "本地文件不存在，需要下载"
+			}
 		} else {
-			status.Message = "已是最新版本"
+			status.NeedsUpdate = remoteInfo.UpdateTime.After(localRecord.UpdateTime)
+			if status.NeedsUpdate {
+				status.Message = fmt.Sprintf("发现新版本: %s → %s (更新时间: %s)", localRecord.Tag, remoteInfo.Tag, remoteInfo.UpdateTime.Format("2006-01-02"))
+			} else {
+				status.Message = "已是最新版本"
+			}
 		}
 	} else {
 		status.LocalVersion = "未安装"
@@ -71,13 +84,16 @@ func (m *ModelUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 
 		// 尝试获取远程文件的最后修改时间
 		updateTime := time.Now()
-		if resp, err := m.APIClient.Head(modelURL); err == nil {
+		resp, headErr := m.APIClient.Head(modelURL)
+		if headErr == nil && resp.StatusCode == http.StatusOK {
 			if lastModified := resp.Header.Get("Last-Modified"); lastModified != "" {
-				if t, err := time.Parse(time.RFC1123, lastModified); err == nil {
+				if t, parseErr := time.Parse(time.RFC1123, lastModified); parseErr == nil {
 					updateTime = t
 				}
 			}
 		}
+		// 如果 HEAD 请求失败或返回错误状态码，使用当前时间
+		// 这会导致总是尝试下载，但通过后续的文件验证避免重复下载
 
 		return &types.UpdateInfo{
 			Name:       types.MODEL_FILE,
@@ -123,6 +139,14 @@ func (m *ModelUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 func (m *ModelUpdater) Run(progress types.ProgressFunc) error {
 	if progress == nil {
 		progress = func(string, float64, string, string, int64, int64, float64, bool) {} // 空函数避免 nil 检查
+	}
+
+	// 执行更新前 hook
+	if m.Config.Config.PreUpdateHook != "" {
+		progress("执行更新前 hook...", 0.02, "", "", 0, 0, 0, false)
+		if err := m.Config.ExecutePreUpdateHook(); err != nil {
+			return fmt.Errorf("pre-update hook 失败，已取消更新: %w", err)
+		}
 	}
 
 	// 显示下载源
@@ -186,6 +210,27 @@ func (m *ModelUpdater) applyUpdate(temp, target string, progress types.ProgressF
 
 	// 保存记录
 	recordPath := m.Config.GetModelRecordPath()
-	progress("模型更新完成！", 1.0, "", "", 0, 0, 0, false)
-	return m.SaveRecord(recordPath, "model_name", types.MODEL_FILE, m.UpdateInfo)
+	if err := m.SaveRecord(recordPath, "model_name", types.MODEL_FILE, m.UpdateInfo); err != nil {
+		return err
+	}
+
+	// 执行更新后 hook（失败不影响更新结果）
+	if m.Config.Config.PostUpdateHook != "" {
+		progress("执行更新后 hook...", 1.0, "", "", 0, 0, 0, false)
+		if err := m.Config.ExecutePostUpdateHook(); err != nil {
+			// 只记录错误，不返回失败
+			progress(fmt.Sprintf("post-update hook 失败: %v", err), 1.0, "", "", 0, 0, 0, false)
+		}
+	}
+
+	// 同步到 fcitx 目录（如果启用）
+	if m.Config.Config.FcitxCompat {
+		if err := m.Config.SyncToFcitxDir(); err != nil {
+			// 只记录错误，不返回失败
+			progress(fmt.Sprintf("fcitx 同步失败: %v", err), 1.0, "", "", 0, 0, 0, false)
+		}
+	}
+
+	progress("更新完成！", 1.0, "", "", 0, 0, 0, false)
+	return nil
 }

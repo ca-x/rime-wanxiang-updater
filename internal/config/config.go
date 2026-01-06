@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -92,19 +93,21 @@ func (m *Manager) SaveConfig() error {
 // createDefaultConfig 创建默认配置
 func createDefaultConfig() *types.Config {
 	return &types.Config{
-		Engine:       detectEngine(),
-		SchemeType:   "",
-		SchemeFile:   "",
-		DictFile:     "",
-		UseMirror:    true,
-		GithubToken:  "",
-		ExcludeFiles: []string{},
-		AutoUpdate:   false,
-		ProxyEnabled: false,
-		ProxyType:    "http",
-		ProxyAddress: "127.0.0.1:7890",
-		FcitxCompat:  false,
-		FcitxUseLink: true, // 默认使用软链接
+		Engine:         detectEngine(),
+		SchemeType:     "",
+		SchemeFile:     "",
+		DictFile:       "",
+		UseMirror:      true,
+		GithubToken:    "",
+		ExcludeFiles:   []string{},
+		AutoUpdate:     false,
+		ProxyEnabled:   false,
+		ProxyType:      "http",
+		ProxyAddress:   "127.0.0.1:7890",
+		FcitxCompat:    false,
+		FcitxUseLink:   true, // 默认使用软链接
+		PreUpdateHook:  "",
+		PostUpdateHook: "",
 	}
 }
 
@@ -367,4 +370,76 @@ func copyFile(src, dst string) error {
 
 	// 写入目标文件
 	return os.WriteFile(dst, data, srcInfo.Mode())
+}
+
+// ExecutePreUpdateHook 执行更新前 hook
+// 如果 hook 执行失败，返回错误以取消更新
+func (m *Manager) ExecutePreUpdateHook() error {
+	if m.Config.PreUpdateHook == "" {
+		// Hook 未设置，直接返回
+		return nil
+	}
+
+	// 展开路径中的 ~ 为用户目录
+	hookPath := expandPath(m.Config.PreUpdateHook)
+
+	// 检查脚本是否存在
+	if _, err := os.Stat(hookPath); os.IsNotExist(err) {
+		return fmt.Errorf("pre-update hook 脚本不存在: %s", hookPath)
+	}
+
+	// 执行脚本
+	cmd := exec.Command(hookPath)
+	cmd.Env = append(os.Environ(),
+		"RIME_DIR="+m.RimeDir,
+		"RIME_CACHE_DIR="+m.CacheDir,
+		"HOOK_TYPE=pre_update",
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("pre-update hook 执行失败: %w\n输出: %s", err, string(output))
+	}
+
+	return nil
+}
+
+// ExecutePostUpdateHook 执行更新后 hook
+// 即使失败也不影响更新结果，只记录错误
+func (m *Manager) ExecutePostUpdateHook() error {
+	if m.Config.PostUpdateHook == "" {
+		return nil
+	}
+
+	// 展开路径中的 ~ 为用户目录
+	hookPath := expandPath(m.Config.PostUpdateHook)
+
+	// 检查脚本是否存在
+	if _, err := os.Stat(hookPath); os.IsNotExist(err) {
+		return fmt.Errorf("post-update hook 脚本不存在: %s", hookPath)
+	}
+
+	// 执行脚本
+	cmd := exec.Command(hookPath)
+	cmd.Env = append(os.Environ(),
+		"RIME_DIR="+m.RimeDir,
+		"RIME_CACHE_DIR="+m.CacheDir,
+		"HOOK_TYPE=post_update",
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("post-update hook 执行失败: %w\n输出: %s", err, string(output))
+	}
+
+	return nil
+}
+
+// expandPath 展开路径中的 ~ 为用户目录
+func expandPath(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		homeDir, _ := os.UserHomeDir()
+		return filepath.Join(homeDir, path[2:])
+	}
+	return path
 }

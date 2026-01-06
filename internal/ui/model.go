@@ -132,7 +132,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case ViewResult:
 			return m.handleResultInput(msg)
 		case ViewUpdating:
-			// 更新中不接受输入
+			// 允许用户强制退出更新过程
+			switch msg.String() {
+			case "q", "esc":
+				// 强制返回菜单
+				m.state = ViewMenu
+				m.updating = false
+				// 清理 channel（如果存在）
+				m.progressChan = nil
+				m.completionChan = nil
+				return m, nil
+			case "ctrl+c":
+				return m, tea.Quit
+			}
 			return m, nil
 		}
 
@@ -335,12 +347,20 @@ func (m Model) handleConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		// Linux 平台添加 fcitx 兼容性配置
 		if runtime.GOOS == "linux" {
-			maxChoice += 2 // FcitxCompat, FcitxUseLink
+			maxChoice++ // FcitxCompat
+			// 只有启用了 fcitx 兼容，才能选择软链接选项
+			if m.cfg.Config.FcitxCompat {
+				maxChoice++ // FcitxUseLink
+			}
 		}
 
 		if m.cfg.Config.ProxyEnabled {
 			maxChoice += 2 // ProxyType, ProxyAddress
 		}
+
+		// Hook 脚本配置
+		maxChoice += 2 // PreUpdateHook, PostUpdateHook
+
 		if m.configChoice < maxChoice {
 			m.configChoice++
 		}
@@ -357,12 +377,19 @@ func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 
 	// Linux 平台添加 fcitx 兼容性配置
 	if runtime.GOOS == "linux" {
-		configItems = append(configItems, "fcitx_compat", "fcitx_use_link")
+		configItems = append(configItems, "fcitx_compat")
+		// 只有启用了 fcitx 兼容，才显示软链接选项
+		if m.cfg.Config.FcitxCompat {
+			configItems = append(configItems, "fcitx_use_link")
+		}
 	}
 
 	if m.cfg.Config.ProxyEnabled {
 		configItems = append(configItems, "proxy_type", "proxy_address")
 	}
+
+	// Hook 脚本配置
+	configItems = append(configItems, "pre_update_hook", "post_update_hook")
 
 	if m.configChoice < len(configItems) {
 		m.editingKey = configItems[m.configChoice]
@@ -403,6 +430,10 @@ func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 			m.editingValue = m.cfg.Config.ProxyType
 		case "proxy_address":
 			m.editingValue = m.cfg.Config.ProxyAddress
+		case "pre_update_hook":
+			m.editingValue = m.cfg.Config.PreUpdateHook
+		case "post_update_hook":
+			m.editingValue = m.cfg.Config.PostUpdateHook
 		}
 
 		m.state = ViewConfigEdit
@@ -469,7 +500,14 @@ func (m Model) saveConfigEdit() (tea.Model, tea.Cmd) {
 	case "proxy_enabled":
 		m.cfg.Config.ProxyEnabled = m.editingValue == "true"
 	case "fcitx_compat":
+		oldValue := m.cfg.Config.FcitxCompat
 		m.cfg.Config.FcitxCompat = m.editingValue == "true"
+
+		// 如果从启用变为禁用，重置选择索引避免越界
+		if oldValue && !m.cfg.Config.FcitxCompat {
+			m.configChoice = 0
+		}
+
 		// 如果启用 fcitx 兼容，立即同步
 		if m.cfg.Config.FcitxCompat {
 			if err := m.cfg.SyncToFcitxDir(); err != nil {
@@ -488,6 +526,10 @@ func (m Model) saveConfigEdit() (tea.Model, tea.Cmd) {
 		m.cfg.Config.ProxyType = m.editingValue
 	case "proxy_address":
 		m.cfg.Config.ProxyAddress = m.editingValue
+	case "pre_update_hook":
+		m.cfg.Config.PreUpdateHook = m.editingValue
+	case "post_update_hook":
+		m.cfg.Config.PostUpdateHook = m.editingValue
 	}
 
 	// 保存到文件
@@ -580,8 +622,14 @@ func listenForProgress(progressChan chan UpdateMsg, completeChan chan UpdateComp
 			if ok {
 				return msg
 			}
-			// Channel 已关闭，等待完成消息
-			return <-completeChan
+			// Channel 已关闭，尝试非阻塞地读取完成消息
+			select {
+			case msg := <-completeChan:
+				return msg
+			default:
+				// 如果 completeChan 也没有消息，继续等待
+				return <-completeChan
+			}
 		case msg := <-completeChan:
 			return msg
 		}
@@ -771,10 +819,9 @@ func (m Model) renderWizard() string {
 	// ASCII Logo
 	logo := logoStyle.Render(asciiLogo)
 	b.WriteString(logo + "\n")
-
 	// 版本信息
-	version := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(version) + "\n\n")
+	appVersion := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(appVersion) + "\n\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
@@ -842,8 +889,8 @@ func (m Model) renderMenu() string {
 	b.WriteString(logo + "\n")
 
 	// 版本和状态信息
-	version := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(version) + "\n")
+	appVersion := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(appVersion) + "\n")
 
 	// 系统配置概览
 	configInfo := fmt.Sprintf("引擎: %s | 方案: %s | 下载源: %s",
@@ -906,9 +953,8 @@ func (m Model) renderUpdating() string {
 	b.WriteString(logo + "\n")
 
 	// 版本信息
-	version := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(version) + "\n")
-
+	appVersion := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(appVersion) + "\n")
 	// 处理状态指示器
 	status := statusProcessingStyle.Render("⬢ 处理中 ⬢")
 	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(status) + "\n\n")
@@ -981,7 +1027,7 @@ func (m Model) renderUpdating() string {
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
 
 	// 提示
-	hint := hintStyle.Render("[...] Please wait... System is updating...")
+	hint := hintStyle.Render("[...] Please wait... System is updating... | [Q]/[ESC] Cancel | [Ctrl+C] Quit")
 	b.WriteString(hint)
 
 	return containerStyle.Render(b.String())
@@ -996,8 +1042,8 @@ func (m Model) renderConfig() string {
 	b.WriteString(logo + "\n")
 
 	// 版本信息
-	version := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(version) + "\n\n")
+	appVersion := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(appVersion) + "\n\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
@@ -1032,15 +1078,26 @@ func (m Model) renderConfig() string {
 				value    string
 				editable bool
 				index    int
-			}{"Fcitx兼容", fmt.Sprintf("%v", m.cfg.Config.FcitxCompat), true, editIndex},
-			struct {
-				key      string
-				value    string
-				editable bool
-				index    int
-			}{"使用软链接", fmt.Sprintf("%v", m.cfg.Config.FcitxUseLink), true, editIndex + 1},
+			}{"Fcitx兼容(同步到~/.config/fcitx/rime)", fmt.Sprintf("%v", m.cfg.Config.FcitxCompat), true, editIndex},
 		)
-		editIndex += 2
+		editIndex++
+
+		// 只有启用了 fcitx 兼容，才显示软链接选项
+		if m.cfg.Config.FcitxCompat {
+			linkMethod := "复制文件"
+			if m.cfg.Config.FcitxUseLink {
+				linkMethod = "软链接"
+			}
+			editableConfigs = append(editableConfigs,
+				struct {
+					key      string
+					value    string
+					editable bool
+					index    int
+				}{"同步方式", linkMethod, true, editIndex},
+			)
+			editIndex++
+		}
 	}
 
 	if m.cfg.Config.ProxyEnabled {
@@ -1058,7 +1115,33 @@ func (m Model) renderConfig() string {
 				index    int
 			}{"代理地址", m.cfg.Config.ProxyAddress, true, editIndex + 1},
 		)
+		editIndex += 2
 	}
+
+	// Hook 脚本配置
+	preHookDisplay := m.cfg.Config.PreUpdateHook
+	if preHookDisplay == "" {
+		preHookDisplay = "(未设置)"
+	}
+	postHookDisplay := m.cfg.Config.PostUpdateHook
+	if postHookDisplay == "" {
+		postHookDisplay = "(未设置)"
+	}
+
+	editableConfigs = append(editableConfigs,
+		struct {
+			key      string
+			value    string
+			editable bool
+			index    int
+		}{"更新前Hook", preHookDisplay, true, editIndex},
+		struct {
+			key      string
+			value    string
+			editable bool
+			index    int
+		}{"更新后Hook", postHookDisplay, true, editIndex + 1},
+	)
 
 	var configContent strings.Builder
 	for _, cfg := range editableConfigs {
@@ -1110,8 +1193,8 @@ func (m Model) renderConfigEdit() string {
 	b.WriteString(logo + "\n")
 
 	// 版本信息
-	version := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(version) + "\n\n")
+	appVersion := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(appVersion) + "\n\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
@@ -1139,11 +1222,11 @@ func (m Model) renderConfigEdit() string {
 		isBooleanField = true
 	case "fcitx_compat":
 		configName = "Fcitx兼容"
-		inputHint = "Select: [1] Enable  [2] Disable | Arrow keys to toggle"
+		inputHint = "启用后将同步配置到 ~/.config/fcitx/rime/ 以兼容外部插件 | [1] Enable  [2] Disable"
 		isBooleanField = true
 	case "fcitx_use_link":
-		configName = "使用软链接"
-		inputHint = "Select: [1] 软链接  [2] 复制文件 | Arrow keys to toggle"
+		configName = "同步方式"
+		inputHint = "[1] 软链接(推荐,自动同步,节省空间)  [2] 复制文件(独立,更安全)"
 		isBooleanField = true
 	case "proxy_type":
 		configName = "代理类型"
@@ -1151,6 +1234,12 @@ func (m Model) renderConfigEdit() string {
 	case "proxy_address":
 		configName = "代理地址"
 		inputHint = "Input proxy address (e.g. 127.0.0.1:7890)"
+	case "pre_update_hook":
+		configName = "更新前Hook"
+		inputHint = "脚本路径(如~/backup.sh),更新前执行,失败将取消更新"
+	case "post_update_hook":
+		configName = "更新后Hook"
+		inputHint = "脚本路径(如~/notify.sh),更新后执行,失败不影响更新结果"
 	}
 
 	// 编辑框
@@ -1214,8 +1303,8 @@ func (m Model) renderResult() string {
 	b.WriteString(logo + "\n")
 
 	// 版本信息
-	version := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
-	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(version) + "\n\n")
+	appVersion := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(appVersion) + "\n\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")

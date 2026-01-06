@@ -102,6 +102,14 @@ func (s *SchemeUpdater) Run(progress types.ProgressFunc) error {
 		progress = func(string, float64, string, string, int64, int64, float64, bool) {} // 空函数避免 nil 检查
 	}
 
+	// 执行更新前 hook
+	if s.Config.Config.PreUpdateHook != "" {
+		progress("执行更新前 hook...", 0.02, "", "", 0, 0, 0, false)
+		if err := s.Config.ExecutePreUpdateHook(); err != nil {
+			return fmt.Errorf("pre-update hook 失败，已取消更新: %w", err)
+		}
+	}
+
 	// 显示下载源
 	source := "GitHub"
 	if s.Config.Config.UseMirror {
@@ -190,8 +198,29 @@ func (s *SchemeUpdater) applyUpdate(temp, target string, progress types.Progress
 
 	// 保存记录
 	recordPath := s.Config.GetSchemeRecordPath()
-	progress("方案更新完成！", 1.0, "", "", 0, 0, 0, false)
-	return s.SaveRecord(recordPath, "scheme_file", s.Config.Config.SchemeFile, s.UpdateInfo)
+	if err := s.SaveRecord(recordPath, "scheme_file", s.Config.Config.SchemeFile, s.UpdateInfo); err != nil {
+		return err
+	}
+
+	// 执行更新后 hook（失败不影响更新结果）
+	if s.Config.Config.PostUpdateHook != "" {
+		progress("执行更新后 hook...", 1.0, "", "", 0, 0, 0, false)
+		if err := s.Config.ExecutePostUpdateHook(); err != nil {
+			// 只记录错误，不返回失败
+			progress(fmt.Sprintf("post-update hook 失败: %v", err), 1.0, "", "", 0, 0, 0, false)
+		}
+	}
+
+	// 同步到 fcitx 目录（如果启用）
+	if s.Config.Config.FcitxCompat {
+		if err := s.Config.SyncToFcitxDir(); err != nil {
+			// 只记录错误，不返回失败
+			progress(fmt.Sprintf("fcitx 同步失败: %v", err), 1.0, "", "", 0, 0, 0, false)
+		}
+	}
+
+	progress("更新完成！", 1.0, "", "", 0, 0, 0, false)
+	return nil
 }
 
 // cleanBuild 清理 build 目录
