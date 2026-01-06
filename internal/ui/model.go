@@ -387,6 +387,8 @@ func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 
 // handleConfigEditInput 处理配置编辑输入
 func (m Model) handleConfigEditInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	isBooleanField := m.editingKey == "use_mirror" || m.editingKey == "auto_update" || m.editingKey == "proxy_enabled"
+
 	switch msg.String() {
 	case "ctrl+c":
 		return m, tea.Quit
@@ -400,17 +402,25 @@ func (m Model) handleConfigEditInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// 保存编辑
 		return m.saveConfigEdit()
 	case "backspace":
-		if len(m.editingValue) > 0 {
+		if !isBooleanField && len(m.editingValue) > 0 {
 			m.editingValue = m.editingValue[:len(m.editingValue)-1]
 		}
 	default:
-		// 对于布尔值，使用特殊处理
-		if m.editingKey == "use_mirror" || m.editingKey == "auto_update" || m.editingKey == "proxy_enabled" {
+		// 对于布尔值，使用数字选择
+		if isBooleanField {
 			key := msg.String()
-			if key == "t" || key == "T" {
+			switch key {
+			case "1":
 				m.editingValue = "true"
-			} else if key == "f" || key == "F" {
+			case "2":
 				m.editingValue = "false"
+			case "left", "right", "up", "down":
+				// 使用方向键切换
+				if m.editingValue == "true" {
+					m.editingValue = "false"
+				} else {
+					m.editingValue = "true"
+				}
 			}
 		} else {
 			// 其他配置项允许输入
@@ -893,11 +903,11 @@ func (m Model) renderUpdating() string {
 			BorderForeground(neonCyan).
 			Padding(0, 1)
 
-		// 计算百分比
-		percent := float64(m.downloaded) / float64(m.totalSize) * 100
-		progressText := fmt.Sprintf("%s\n%.1f%%", m.progress.View(), percent)
+		// 直接计算当前百分比
+		percent := float64(m.downloaded) / float64(m.totalSize)
 
-		progressBar := progressBox.Render(progressText)
+		// 使用 ViewAs 直接渲染指定百分比的进度条
+		progressBar := progressBox.Render(m.progress.ViewAs(percent))
 		b.WriteString(progressBar + "\n\n")
 	}
 
@@ -1027,16 +1037,20 @@ func (m Model) renderConfigEdit() string {
 	// 获取配置项名称
 	var configName string
 	var inputHint string
+	isBooleanField := false
 	switch m.editingKey {
 	case "use_mirror":
 		configName = "使用镜像"
-		inputHint = "Input: t (true) or f (false)"
+		inputHint = "Select: [1] Enable  [2] Disable | Arrow keys to toggle"
+		isBooleanField = true
 	case "auto_update":
 		configName = "自动更新"
-		inputHint = "Input: t (true) or f (false)"
+		inputHint = "Select: [1] Enable  [2] Disable | Arrow keys to toggle"
+		isBooleanField = true
 	case "proxy_enabled":
 		configName = "代理启用"
-		inputHint = "Input: t (true) or f (false)"
+		inputHint = "Select: [1] Enable  [2] Disable | Arrow keys to toggle"
+		isBooleanField = true
 	case "proxy_type":
 		configName = "代理类型"
 		inputHint = "Input proxy type: http/https/socks5"
@@ -1054,11 +1068,34 @@ func (m Model) renderConfigEdit() string {
 
 	var editContent strings.Builder
 	editContent.WriteString(configKeyStyle.Render("配置项: ") + configValueStyle.Render(configName) + "\n\n")
-	editContent.WriteString(configKeyStyle.Render("当前值: "))
 
-	// 显示编辑值，添加光标效果
-	valueWithCursor := m.editingValue + blinkStyle.Render("_")
-	editContent.WriteString(successStyle.Render(valueWithCursor) + "\n\n")
+	// 对于布尔值，显示选项选择界面
+	if isBooleanField {
+		trueSelected := m.editingValue == "true"
+		falseSelected := m.editingValue == "false"
+
+		var trueOption, falseOption string
+		if trueSelected {
+			trueOption = selectedMenuItemStyle.Render("► [1] Enable (true)")
+		} else {
+			trueOption = menuItemStyle.Render("  [1] Enable (true)")
+		}
+
+		if falseSelected {
+			falseOption = selectedMenuItemStyle.Render("► [2] Disable (false)")
+		} else {
+			falseOption = menuItemStyle.Render("  [2] Disable (false)")
+		}
+
+		editContent.WriteString(trueOption + "\n")
+		editContent.WriteString(falseOption + "\n\n")
+	} else {
+		// 非布尔值显示输入框
+		editContent.WriteString(configKeyStyle.Render("当前值: "))
+		valueWithCursor := m.editingValue + blinkStyle.Render("_")
+		editContent.WriteString(successStyle.Render(valueWithCursor) + "\n\n")
+	}
+
 	editContent.WriteString(hintStyle.Render(inputHint))
 
 	editBoxRendered := editBox.Render(editContent.String())

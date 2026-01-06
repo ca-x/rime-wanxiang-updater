@@ -47,8 +47,8 @@ func printBootSequence() {
 		Foreground(neonMagenta).
 		Bold(true)
 
-	version := fmt.Sprintf("              >>> UPDATER SYSTEM v%s <<<", version.GetVersion())
-	fmt.Println(versionStyle.Render(version))
+	versionText := fmt.Sprintf("              >>> UPDATER SYSTEM %s <<<", version.GetVersion())
+	fmt.Println(versionStyle.Render(versionText))
 	fmt.Println()
 
 	// 启动序列
