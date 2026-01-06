@@ -72,12 +72,26 @@ func (c *CombinedUpdater) HasAnyUpdate() bool {
 
 // RunAll 执行所有更新
 func (c *CombinedUpdater) RunAll() error {
+	return c.RunAllWithProgress(nil)
+}
+
+// RunAllWithProgress 执行所有更新并报告进度
+func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message string, percent float64)) error {
 	var errors []string
+
+	// 如果没有提供进度回调，使用空函数
+	if progress == nil {
+		progress = func(string, string, float64) {}
+	}
 
 	// 更新方案
 	if c.SchemeUpdater.UpdateInfo != nil &&
 		c.SchemeUpdater.HasUpdate(c.SchemeUpdater.UpdateInfo, c.Config.GetSchemeRecordPath()) {
-		if err := c.SchemeUpdater.Run(nil); err != nil {
+		progress("方案", "正在更新方案...", 0.0)
+		progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
+			progress("方案", message, percent*0.33) // 方案占 33%
+		}
+		if err := c.SchemeUpdater.Run(progressFunc); err != nil {
 			errors = append(errors, fmt.Sprintf("方案更新失败: %v", err))
 		}
 	}
@@ -85,7 +99,11 @@ func (c *CombinedUpdater) RunAll() error {
 	// 更新词库
 	if c.DictUpdater.UpdateInfo != nil &&
 		c.DictUpdater.HasUpdate(c.DictUpdater.UpdateInfo, c.Config.GetDictRecordPath()) {
-		if err := c.DictUpdater.Run(nil); err != nil {
+		progress("词库", "正在更新词库...", 0.33)
+		progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
+			progress("词库", message, 0.33+percent*0.33) // 词库占 33%
+		}
+		if err := c.DictUpdater.Run(progressFunc); err != nil {
 			errors = append(errors, fmt.Sprintf("词库更新失败: %v", err))
 		}
 	}
@@ -93,13 +111,18 @@ func (c *CombinedUpdater) RunAll() error {
 	// 更新模型
 	if c.ModelUpdater.UpdateInfo != nil &&
 		c.ModelUpdater.HasUpdate(c.ModelUpdater.UpdateInfo, c.Config.GetModelRecordPath()) {
-		if err := c.ModelUpdater.Run(nil); err != nil {
+		progress("模型", "正在更新模型...", 0.66)
+		progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
+			progress("模型", message, 0.66+percent*0.34) // 模型占 34%
+		}
+		if err := c.ModelUpdater.Run(progressFunc); err != nil {
 			errors = append(errors, fmt.Sprintf("模型更新失败: %v", err))
 		}
 	}
 
 	// 如果没有错误，执行部署
 	if len(errors) == 0 {
+		progress("部署", "正在部署...", 0.95)
 		if err := c.SchemeUpdater.Deploy(); err != nil {
 			errors = append(errors, fmt.Sprintf("部署失败: %v", err))
 		}
@@ -109,5 +132,6 @@ func (c *CombinedUpdater) RunAll() error {
 		return fmt.Errorf("更新过程中出现错误: %v", errors)
 	}
 
+	progress("完成", "所有更新已完成", 1.0)
 	return nil
 }

@@ -648,23 +648,59 @@ func (m *Model) runModelUpdate() tea.Cmd {
 }
 
 // runAutoUpdate 运行自动更新
-func (m Model) runAutoUpdate() tea.Cmd {
-	return func() tea.Msg {
+func (m *Model) runAutoUpdate() tea.Cmd {
+	// 创建通道
+	m.progressChan = make(chan UpdateMsg, 100)
+	m.completionChan = make(chan UpdateCompleteMsg, 1)
+
+	// 启动更新 goroutine
+	go func() {
 		combined := updater.NewCombinedUpdater(m.cfg)
+
+		// 进度回调 - 简化版本，用于组合更新
+		progressFunc := func(component, message string, percent float64) {
+			select {
+			case m.progressChan <- UpdateMsg{
+				message:      fmt.Sprintf("[%s] %s", component, message),
+				percent:      percent,
+				source:       "",
+				fileName:     "",
+				downloaded:   0,
+				total:        0,
+				speed:        0,
+				downloadMode: false,
+			}:
+			default:
+				// Channel 满了，跳过
+			}
+		}
+
+		// 检查所有更新
+		progressFunc("检查", "正在检查所有更新...", 0.0)
 		if err := combined.FetchAllUpdates(); err != nil {
-			return UpdateCompleteMsg{err: err, updateType: "自动", skipped: false}
+			m.completionChan <- UpdateCompleteMsg{err: err, updateType: "自动", skipped: false}
+			close(m.progressChan)
+			return
 		}
 
+		// 检查是否有任何更新
 		if !combined.HasAnyUpdate() {
-			return UpdateCompleteMsg{err: nil, updateType: "所有组件", skipped: true}
+			progressFunc("完成", "所有组件已是最新版本", 1.0)
+			m.completionChan <- UpdateCompleteMsg{err: nil, updateType: "所有组件", skipped: true}
+			close(m.progressChan)
+			return
 		}
 
-		if err := combined.RunAll(); err != nil {
-			return UpdateCompleteMsg{err: err, updateType: "自动", skipped: false}
-		}
+		// 执行所有更新
+		err := combined.RunAllWithProgress(progressFunc)
 
-		return UpdateCompleteMsg{err: nil, updateType: "自动", skipped: false}
-	}
+		// 发送完成消息
+		m.completionChan <- UpdateCompleteMsg{err: err, updateType: "自动", skipped: false}
+		close(m.progressChan)
+	}()
+
+	// 返回监听命令
+	return listenForProgress(m.progressChan, m.completionChan)
 }
 
 // View 渲染视图
@@ -842,59 +878,47 @@ func (m Model) renderUpdating() string {
 	title := titleStyle.Render("⚡ 正在更新 ⚡")
 	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(title) + "\n\n")
 
-	// 信息框样式
-	infoStyle := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(neonCyan).
-		Padding(0, 2).
-		Width(60)
-
-	// 如果正在下载，显示详细的下载信息
-	if m.isDownloading {
-		var downloadInfo strings.Builder
-
-		// 下载源
-		if m.downloadSource != "" {
-			downloadInfo.WriteString(configKeyStyle.Render("下载源: ") +
-				configValueStyle.Render(m.downloadSource) + "\n")
-		}
-
-		// 文件名
-		if m.downloadFileName != "" {
-			downloadInfo.WriteString(configKeyStyle.Render("文件名: ") +
-				configValueStyle.Render(m.downloadFileName) + "\n")
-		}
-
-		// 下载进度
-		if m.totalSize > 0 {
-			downloadedMB := float64(m.downloaded) / 1024 / 1024
-			totalMB := float64(m.totalSize) / 1024 / 1024
-			downloadInfo.WriteString(configKeyStyle.Render("进度:   ") +
-				successStyle.Render(fmt.Sprintf("%.2f MB / %.2f MB", downloadedMB, totalMB)) + "\n")
-		} else if m.downloaded > 0 {
-			downloadedMB := float64(m.downloaded) / 1024 / 1024
-			downloadInfo.WriteString(configKeyStyle.Render("已下载: ") +
-				successStyle.Render(fmt.Sprintf("%.2f MB", downloadedMB)) + "\n")
-		}
-
-		// 下载速度
-		if m.downloadSpeed > 0 {
-			downloadInfo.WriteString(configKeyStyle.Render("速度:   ") +
-				neonGreenStyle.Render(fmt.Sprintf("%.2f MB/s", m.downloadSpeed)))
-		}
-
-		b.WriteString(infoStyle.Render(downloadInfo.String()) + "\n\n")
-	}
-
-	// 进度消息 - 闪烁效果
+	// 显示进度信息 - 只用一个框显示所有信息
 	msgBox := lipgloss.NewStyle().
 		Border(lipgloss.ThickBorder()).
 		BorderForeground(neonGreen).
 		Padding(1, 2).
 		Width(60)
 
-	msg := progressMsgStyle.Render("▸ " + m.progressMsg)
-	b.WriteString(msgBox.Render(msg) + "\n\n")
+	var msgContent strings.Builder
+
+	// 如果正在下载，显示详细信息
+	if m.isDownloading {
+		// 下载源和文件名
+		if m.downloadSource != "" && m.downloadFileName != "" {
+			msgContent.WriteString(configKeyStyle.Render("▸ ") +
+				configValueStyle.Render(m.downloadSource) +
+				configKeyStyle.Render(" > ") +
+				configValueStyle.Render(m.downloadFileName) + "\n\n")
+		}
+
+		// 进度条（如果有总大小）
+		if m.totalSize > 0 {
+			downloadedMB := float64(m.downloaded) / 1024 / 1024
+			totalMB := float64(m.totalSize) / 1024 / 1024
+
+			// 进度数字和速度在一行
+			progressLine := successStyle.Render(fmt.Sprintf("%.2f MB / %.2f MB", downloadedMB, totalMB))
+			if m.downloadSpeed > 0 {
+				progressLine += configKeyStyle.Render("  |  ") +
+					neonGreenStyle.Render(fmt.Sprintf("%.2f MB/s", m.downloadSpeed))
+			}
+			msgContent.WriteString(progressLine)
+		} else {
+			// 没有总大小时显示基本消息
+			msgContent.WriteString(progressMsgStyle.Render("▸ " + m.progressMsg))
+		}
+	} else {
+		// 非下载状态显示普通消息
+		msgContent.WriteString(progressMsgStyle.Render("▸ " + m.progressMsg))
+	}
+
+	b.WriteString(msgBox.Render(msgContent.String()) + "\n\n")
 
 	// 进度条 - 只在下载时显示
 	if m.isDownloading && m.totalSize > 0 {
