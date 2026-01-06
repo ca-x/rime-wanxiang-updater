@@ -48,6 +48,15 @@ func (b *BaseUpdater) HasUpdate(updateInfo *types.UpdateInfo, recordPath string)
 
 // GetLocalTime 获取本地记录的更新时间
 func (b *BaseUpdater) GetLocalTime(recordPath string) *time.Time {
+	record := b.GetLocalRecord(recordPath)
+	if record == nil {
+		return nil
+	}
+	return &record.UpdateTime
+}
+
+// GetLocalRecord 获取本地更新记录
+func (b *BaseUpdater) GetLocalRecord(recordPath string) *types.UpdateRecord {
 	if !fileutil.FileExists(recordPath) {
 		return nil
 	}
@@ -62,7 +71,7 @@ func (b *BaseUpdater) GetLocalTime(recordPath string) *time.Time {
 		return nil
 	}
 
-	return &record.UpdateTime
+	return &record
 }
 
 // SaveRecord 保存更新记录
@@ -85,13 +94,16 @@ func (b *BaseUpdater) SaveRecord(recordPath string, propertyType, propertyName s
 }
 
 // DownloadFile 下载文件
-func (b *BaseUpdater) DownloadFile(url, dest string) error {
+func (b *BaseUpdater) DownloadFile(url, dest, fileName, source string, progress types.ProgressFunc) error {
 	// 使用 API 客户端的 HTTP 客户端进行下载
 	req, err := b.APIClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("创建下载请求失败: %w", err)
 	}
 	defer req.Body.Close()
+
+	// 获取文件总大小
+	totalSize := req.ContentLength
 
 	// 检查是否支持断点续传
 	var downloaded int64 = 0
@@ -113,8 +125,11 @@ func (b *BaseUpdater) DownloadFile(url, dest string) error {
 	}
 	defer out.Close()
 
-	// 下载文件
+	// 下载文件并报告进度
 	buf := make([]byte, 32*1024)
+	startTime := time.Now()
+	lastUpdate := time.Now()
+
 	for {
 		n, err := req.Body.Read(buf)
 		if n > 0 {
@@ -122,12 +137,71 @@ func (b *BaseUpdater) DownloadFile(url, dest string) error {
 				return fmt.Errorf("写入文件失败: %w", err)
 			}
 			downloaded += int64(n)
+
+			// 每 100ms 更新一次进度
+			if progress != nil && time.Since(lastUpdate) > 100*time.Millisecond {
+				elapsed := time.Since(startTime).Seconds()
+				speed := float64(downloaded) / elapsed / 1024 / 1024 // MB/s
+
+				var percent float64
+				if totalSize > 0 {
+					percent = float64(downloaded) / float64(totalSize)
+				}
+
+				// 格式化消息
+				downloadedMB := float64(downloaded) / 1024 / 1024
+				var msg string
+				if totalSize > 0 {
+					totalMB := float64(totalSize) / 1024 / 1024
+					msg = fmt.Sprintf("下载中: %.2f MB / %.2f MB (%.2f MB/s)",
+						downloadedMB, totalMB, speed)
+				} else {
+					msg = fmt.Sprintf("下载中: %.2f MB (%.2f MB/s)", downloadedMB, speed)
+				}
+
+				progress(msg, percent, source, fileName, downloaded, totalSize, speed, true)
+				lastUpdate = time.Now()
+			}
 		}
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			return fmt.Errorf("读取数据失败: %w", err)
+		}
+	}
+
+	// 下载完成
+	if progress != nil {
+		downloadedMB := float64(downloaded) / 1024 / 1024
+		elapsed := time.Since(startTime).Seconds()
+		speed := float64(downloaded) / elapsed / 1024 / 1024
+		msg := fmt.Sprintf("下载完成: %.2f MB (平均 %.2f MB/s)", downloadedMB, speed)
+		progress(msg, 1.0, "", "", 0, 0, 0, false)
+	}
+
+	return nil
+}
+
+// DownloadFileWithValidation 下载文件并验证大小
+func (b *BaseUpdater) DownloadFileWithValidation(url, dest, fileName, source string, expectedSize int64, progress types.ProgressFunc) error {
+	// 调用下载方法
+	if err := b.DownloadFile(url, dest, fileName, source, progress); err != nil {
+		return err
+	}
+
+	// 验证文件大小
+	if expectedSize > 0 {
+		fileInfo, err := os.Stat(dest)
+		if err != nil {
+			return fmt.Errorf("获取文件信息失败: %w", err)
+		}
+
+		actualSize := fileInfo.Size()
+		if actualSize != expectedSize {
+			// 删除损坏的文件
+			os.Remove(dest)
+			return fmt.Errorf("文件大小不匹配：期望 %d 字节，实际 %d 字节，已删除损坏的文件", expectedSize, actualSize)
 		}
 	}
 

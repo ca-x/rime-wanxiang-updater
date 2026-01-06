@@ -57,6 +57,17 @@ func (c *Client) FetchCNBReleases(owner, repo, tag string) ([]types.GitHubReleas
 	// 转换 CNB Release 为 GitHub Release 格式
 	var releases []types.GitHubRelease
 	for _, cnbRelease := range result.Releases {
+		tagName := cnbRelease.TagRef
+		if strings.Contains(tagName, "/") {
+			parts := strings.Split(tagName, "/")
+			tagName = parts[len(parts)-1]
+		}
+
+		// 如果指定了 tag，则过滤
+		if tag != "" && tagName != tag {
+			continue
+		}
+
 		var assets []types.GitHubAsset
 		for _, cnbAsset := range cnbRelease.Assets {
 			assets = append(assets, types.GitHubAsset{
@@ -65,12 +76,6 @@ func (c *Client) FetchCNBReleases(owner, repo, tag string) ([]types.GitHubReleas
 				UpdatedAt:          cnbAsset.UpdatedAt,
 				Size:               cnbAsset.SizeInByte,
 			})
-		}
-
-		tagName := cnbRelease.TagRef
-		if strings.Contains(tagName, "/") {
-			parts := strings.Split(tagName, "/")
-			tagName = parts[len(parts)-1]
 		}
 
 		releases = append(releases, types.GitHubRelease{

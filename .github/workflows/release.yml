@@ -54,7 +54,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
-          go build -v -trimpath -ldflags="-s -w -X main.Version=${{ github.ref_name }}" \
+          go build -v -trimpath -ldflags="-s -w -X rime-wanxiang-updater/internal/version.Version=${{ github.ref_name }}" \
             -o dist/${{ matrix.output_name }} \
             ./cmd/rime-wanxiang-updater
 

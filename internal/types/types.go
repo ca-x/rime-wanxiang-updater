@@ -4,15 +4,16 @@ import "time"
 
 // 常量定义
 const (
-	VERSION    = "v1.0.0"
-	OWNER      = "amzxyz"
-	REPO       = "rime_wanxiang"
-	CNB_REPO   = "rime-wanxiang"
-	DICT_TAG   = "dict-nightly"
-	MODEL_REPO = "RIME-LMDG"
-	MODEL_TAG  = "LTS"
-	MODEL_FILE = "wanxiang-lts-zh-hans.gram"
-	ZH_DICTS   = "dicts"
+	VERSION         = "v1.0.0"
+	OWNER           = "amzxyz"
+	REPO            = "rime_wanxiang"
+	CNB_REPO        = "rime-wanxiang"
+	DICT_TAG        = "dict-nightly" // GitHub 词库 tag
+	CNB_DICT_TAG    = "v1.0.0"       // CNB 词库 tag
+	MODEL_REPO      = "RIME-LMDG"
+	MODEL_TAG       = "LTS"
+	MODEL_FILE      = "wanxiang-lts-zh-hans.gram"
+	ZH_DICTS        = "dicts"
 )
 
 // SchemeMap 方案映射
@@ -95,4 +96,17 @@ type CNBAsset struct {
 	Digest     string    `json:"digest"`
 	ID         string    `json:"id"`
 	SizeInByte int64     `json:"sizeInByte"`
+}
+
+// ProgressFunc 进度回调函数
+type ProgressFunc func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool)
+
+// UpdateStatus 更新状态
+type UpdateStatus struct {
+	LocalVersion  string    // 本地版本
+	RemoteVersion string    // 远程版本
+	LocalTime     time.Time // 本地更新时间
+	RemoteTime    time.Time // 远程更新时间
+	NeedsUpdate   bool      // 是否需要更新
+	Message       string    // 状态消息
 }

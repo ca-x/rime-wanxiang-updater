@@ -77,7 +77,7 @@ func (c *CombinedUpdater) RunAll() error {
 	// 更新方案
 	if c.SchemeUpdater.UpdateInfo != nil &&
 		c.SchemeUpdater.HasUpdate(c.SchemeUpdater.UpdateInfo, c.Config.GetSchemeRecordPath()) {
-		if err := c.SchemeUpdater.Run(); err != nil {
+		if err := c.SchemeUpdater.Run(nil); err != nil {
 			errors = append(errors, fmt.Sprintf("方案更新失败: %v", err))
 		}
 	}
@@ -85,7 +85,7 @@ func (c *CombinedUpdater) RunAll() error {
 	// 更新词库
 	if c.DictUpdater.UpdateInfo != nil &&
 		c.DictUpdater.HasUpdate(c.DictUpdater.UpdateInfo, c.Config.GetDictRecordPath()) {
-		if err := c.DictUpdater.Run(); err != nil {
+		if err := c.DictUpdater.Run(nil); err != nil {
 			errors = append(errors, fmt.Sprintf("词库更新失败: %v", err))
 		}
 	}
@@ -93,7 +93,7 @@ func (c *CombinedUpdater) RunAll() error {
 	// 更新模型
 	if c.ModelUpdater.UpdateInfo != nil &&
 		c.ModelUpdater.HasUpdate(c.ModelUpdater.UpdateInfo, c.Config.GetModelRecordPath()) {
-		if err := c.ModelUpdater.Run(); err != nil {
+		if err := c.ModelUpdater.Run(nil); err != nil {
 			errors = append(errors, fmt.Sprintf("模型更新失败: %v", err))
 		}
 	}

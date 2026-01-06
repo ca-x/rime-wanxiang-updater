@@ -23,14 +23,52 @@ func NewDictUpdater(cfg *config.Manager) *DictUpdater {
 	}
 }
 
+// GetStatus 获取更新状态
+func (d *DictUpdater) GetStatus() (*types.UpdateStatus, error) {
+	// 获取远程版本信息
+	remoteInfo, err := d.CheckUpdate()
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取本地版本信息
+	recordPath := d.Config.GetDictRecordPath()
+	localRecord := d.GetLocalRecord(recordPath)
+
+	status := &types.UpdateStatus{
+		RemoteVersion: remoteInfo.Tag,
+		RemoteTime:    remoteInfo.UpdateTime,
+		NeedsUpdate:   true,
+	}
+
+	if localRecord != nil {
+		status.LocalVersion = localRecord.Tag
+		status.LocalTime = localRecord.UpdateTime
+		status.NeedsUpdate = remoteInfo.UpdateTime.After(localRecord.UpdateTime)
+
+		if status.NeedsUpdate {
+			status.Message = fmt.Sprintf("发现新版本: %s → %s", localRecord.Tag, remoteInfo.Tag)
+		} else {
+			status.Message = "已是最新版本"
+		}
+	} else {
+		status.LocalVersion = "未安装"
+		status.Message = fmt.Sprintf("检测到可用版本: %s", remoteInfo.Tag)
+	}
+
+	return status, nil
+}
+
 // CheckUpdate 检查更新
 func (d *DictUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 	var releases []types.GitHubRelease
 	var err error
 
 	if d.Config.Config.UseMirror {
-		releases, err = d.APIClient.FetchCNBReleases(types.OWNER, types.CNB_REPO, types.DICT_TAG)
+		// CNB 使用 v1.0.0 tag
+		releases, err = d.APIClient.FetchCNBReleases(types.OWNER, types.CNB_REPO, types.CNB_DICT_TAG)
 	} else {
+		// GitHub 使用 dict-nightly tag
 		releases, err = d.APIClient.FetchGitHubReleases(types.OWNER, types.REPO, types.DICT_TAG)
 	}
 
@@ -60,7 +98,18 @@ func (d *DictUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 }
 
 // Run 执行更新
-func (d *DictUpdater) Run() error {
+func (d *DictUpdater) Run(progress types.ProgressFunc) error {
+	if progress == nil {
+		progress = func(string, float64, string, string, int64, int64, float64, bool) {} // 空函数避免 nil 检查
+	}
+
+	// 显示下载源
+	source := "GitHub"
+	if d.Config.Config.UseMirror {
+		source = "CNB 镜像"
+	}
+	progress(fmt.Sprintf("正在检查词库更新 [%s]...", source), 0.05, "", "", 0, 0, 0, false)
+
 	if d.UpdateInfo == nil {
 		info, err := d.CheckUpdate()
 		if err != nil {
@@ -77,29 +126,35 @@ func (d *DictUpdater) Run() error {
 	targetFile := filepath.Join(d.Config.CacheDir, d.Config.Config.DictFile)
 
 	// 校验本地文件
+	progress("正在校验本地文件...", 0.1, "", "", 0, 0, 0, false)
 	if d.UpdateInfo.SHA256 != "" && d.CompareHash(d.UpdateInfo.SHA256, targetFile) {
+		progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
 		d.SaveRecord(recordPath, "dict_file", d.Config.Config.DictFile, d.UpdateInfo)
 		return nil
 	}
 
 	// 下载文件
+	progress(fmt.Sprintf("准备从 %s 下载词库...", source), 0.15, "", "", 0, 0, 0, false)
 	tempFile := filepath.Join(d.Config.CacheDir, fmt.Sprintf("temp_dict_%s.zip", d.UpdateInfo.SHA256))
-	if err := d.DownloadFile(d.UpdateInfo.URL, tempFile); err != nil {
+	if err := d.DownloadFileWithValidation(d.UpdateInfo.URL, tempFile, d.Config.Config.DictFile, source, d.UpdateInfo.Size, progress); err != nil {
 		return fmt.Errorf("下载失败: %w", err)
 	}
 
 	// 清理旧文件
+	progress("正在清理旧文件...", 0.7, "", "", 0, 0, 0, false)
 	if fileutil.FileExists(targetFile) {
 		d.CleanOldFiles(targetFile, tempFile, d.Config.GetDictExtractPath(), true)
 	}
 
 	// 应用更新
-	return d.applyUpdate(tempFile, targetFile)
+	progress("正在应用更新...", 0.8, "", "", 0, 0, 0, false)
+	return d.applyUpdate(tempFile, targetFile, progress)
 }
 
 // applyUpdate 应用更新
-func (d *DictUpdater) applyUpdate(temp, target string) error {
+func (d *DictUpdater) applyUpdate(temp, target string, progress types.ProgressFunc) error {
 	// 终止进程
+	progress("正在终止相关进程...", 0.85, "", "", 0, 0, 0, false)
 	if err := d.TerminateProcesses(); err != nil {
 		return fmt.Errorf("终止进程失败: %w", err)
 	}
@@ -109,11 +164,20 @@ func (d *DictUpdater) applyUpdate(temp, target string) error {
 	os.MkdirAll(dictDir, 0755)
 
 	// 解压文件
+	progress("正在解压词库文件...", 0.9, "", "", 0, 0, 0, false)
 	if err := d.ExtractZip(temp, dictDir); err != nil {
 		return fmt.Errorf("解压失败: %w", err)
 	}
 
+	// 处理 CNB 镜像的嵌套目录问题
+	if d.Config.Config.UseMirror {
+		if err := fileutil.HandleCNBNestedDir(dictDir, d.Config.Config.DictFile); err != nil {
+			return fmt.Errorf("处理嵌套目录失败: %w", err)
+		}
+	}
+
 	// 重命名临时文件
+	progress("正在保存文件...", 0.95, "", "", 0, 0, 0, false)
 	if fileutil.FileExists(target) {
 		os.Remove(target)
 	}
@@ -123,5 +187,6 @@ func (d *DictUpdater) applyUpdate(temp, target string) error {
 
 	// 保存记录
 	recordPath := d.Config.GetDictRecordPath()
+	progress("更新完成！", 1.0, "", "", 0, 0, 0, false)
 	return d.SaveRecord(recordPath, "dict_file", d.Config.Config.DictFile, d.UpdateInfo)
 }

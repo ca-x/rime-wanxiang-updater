@@ -137,11 +137,11 @@ func (m *Manager) GetActualFilenames(schemeKey string) (string, string, error) {
 	var schemePattern, dictPattern string
 
 	if schemeKey == "base" {
-		schemePattern = `.*base\.zip`
-		dictPattern = `.*base.*\.zip`
+		schemePattern = `rime-wanxiang-base\.zip`
+		dictPattern = `base-dicts\.zip`
 	} else {
 		schemePattern = fmt.Sprintf(`.*%s.*fuzhu\.zip`, schemeKey)
-		dictPattern = fmt.Sprintf(`.*%s.*dicts\.zip`, schemeKey)
+		dictPattern = fmt.Sprintf(`pro-%s-fuzhu-dicts\.zip`, schemeKey)
 	}
 
 	schemeRegex := regexp.MustCompile(schemePattern)
@@ -181,8 +181,10 @@ func (m *Manager) GetActualFilenames(schemeKey string) (string, string, error) {
 
 	// 获取词库文件
 	if m.Config.UseMirror {
-		releases, err = client.FetchCNBReleases(types.OWNER, types.CNB_REPO, types.DICT_TAG)
+		// CNB 使用 v1.0.0 tag
+		releases, err = client.FetchCNBReleases(types.OWNER, types.CNB_REPO, types.CNB_DICT_TAG)
 	} else {
+		// GitHub 使用 dict-nightly tag
 		releases, err = client.FetchGitHubReleases(types.OWNER, types.REPO, types.DICT_TAG)
 	}
 

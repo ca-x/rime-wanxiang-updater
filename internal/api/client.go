@@ -85,3 +85,19 @@ func (c *Client) Get(url string) (*http.Response, error) {
 
 	return c.httpClient.Do(req)
 }
+
+// Head 发送 HEAD 请求
+func (c *Client) Head(url string) (*http.Response, error) {
+	req, err := http.NewRequest("HEAD", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	// 设置请求头
+	req.Header.Set("User-Agent", "RIME-Updater/1.0")
+	if c.githubToken != "" && !c.config.UseMirror {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.githubToken))
+	}
+
+	return c.httpClient.Do(req)
+}

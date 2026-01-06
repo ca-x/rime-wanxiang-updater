@@ -84,3 +84,50 @@ func GetZipFileList(zipPath string) ([]string, error) {
 	}
 	return files, nil
 }
+
+// HandleCNBNestedDir 处理 CNB 镜像解压后的嵌套目录问题
+// CNB 镜像解压后可能会有额外的一层嵌套目录，例如：
+// temp_dir/base-dicts/base-dicts/files... (需要处理)
+// 而不是：temp_dir/base-dicts/files... (正常情况)
+func HandleCNBNestedDir(extractPath, zipFileName string) error {
+	// 去掉 .zip 后缀获取目录名
+	dirName := zipFileName[:len(zipFileName)-4]
+
+	// 检查是否存在嵌套目录
+	nestedPath := filepath.Join(extractPath, dirName)
+	if !FileExists(nestedPath) {
+		// 没有嵌套，直接返回
+		return nil
+	}
+
+	// 检查嵌套目录中的内容
+	entries, err := os.ReadDir(nestedPath)
+	if err != nil {
+		return fmt.Errorf("读取目录失败: %w", err)
+	}
+
+	// 如果嵌套目录中只有一个同名目录，则将其内容移动到上层
+	if len(entries) == 1 && entries[0].IsDir() && entries[0].Name() == dirName {
+		innerPath := filepath.Join(nestedPath, dirName)
+
+		// 临时目录
+		tempPath := filepath.Join(extractPath, "_temp_"+dirName)
+
+		// 先移动到临时目录
+		if err := os.Rename(innerPath, tempPath); err != nil {
+			return fmt.Errorf("移动到临时目录失败: %w", err)
+		}
+
+		// 删除原嵌套目录
+		if err := os.RemoveAll(nestedPath); err != nil {
+			return fmt.Errorf("删除嵌套目录失败: %w", err)
+		}
+
+		// 将临时目录重命名为正确的目录名
+		if err := os.Rename(tempPath, nestedPath); err != nil {
+			return fmt.Errorf("重命名目录失败: %w", err)
+		}
+	}
+
+	return nil
+}

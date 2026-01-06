@@ -29,7 +29,7 @@ func (d *linuxDeployer) TerminateProcesses() error {
 	return nil
 }
 
-// Deploy 部署 - 运行 rime_deployer 或重启输入法
+// Deploy 部署 - 优先使用 qdbus6 自动部署，其次尝试 rime_deployer，最后重启输入法
 func (d *linuxDeployer) Deploy() error {
 	if d.config == nil {
 		return fmt.Errorf("配置未初始化")
@@ -41,23 +41,29 @@ func (d *linuxDeployer) Deploy() error {
 		return fmt.Errorf("无法确定 Rime 数据目录: %w", err)
 	}
 
-	// 尝试运行 rime_deployer
+	// 尝试 1: 使用 qdbus6 自动部署 Fcitx5（最推荐的方法）
+	if err := d.deployWithQdbus6(); err == nil {
+		return nil
+	}
+
+	// 尝试 2: 运行 rime_deployer
 	if err := d.runRimeDeployer(rimeDir); err == nil {
 		return nil
 	}
 
-	// 如果 rime_deployer 失败，尝试重启输入法
+	// 尝试 3: 重启输入法
 	return d.restartInputMethod()
 }
 
 // getRimeDataDir 获取 Rime 数据目录
+// 参考 Shell 脚本：按优先级检测多个可能的位置
 func (d *linuxDeployer) getRimeDataDir() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
 
-	// 按优先级尝试不同的目录
+	// 按优先级尝试不同的目录（与 Shell 脚本保持一致）
 	candidates := []string{
 		filepath.Join(homeDir, ".local/share/fcitx5/rime"),
 		filepath.Join(homeDir, ".config/fcitx5/rime"),
@@ -74,6 +80,29 @@ func (d *linuxDeployer) getRimeDataDir() (string, error) {
 	// 如果都不存在，使用默认的 fcitx5 目录
 	defaultDir := filepath.Join(homeDir, ".local/share/fcitx5/rime")
 	return defaultDir, nil
+}
+
+// deployWithQdbus6 使用 qdbus6 自动部署 Fcitx5
+// 这是最优雅的部署方式，参考 Shell 脚本
+func (d *linuxDeployer) deployWithQdbus6() error {
+	// 检查 qdbus6 是否可用
+	if _, err := exec.LookPath("qdbus6"); err != nil {
+		return fmt.Errorf("qdbus6 不可用")
+	}
+
+	// 使用 qdbus6 触发 Fcitx5 重新部署
+	cmd := exec.Command("qdbus6",
+		"org.fcitx.Fcitx5",
+		"/controller",
+		"org.fcitx.Fcitx.Controller1.SetConfig",
+		"fcitx://config/addon/rime/deploy",
+		"")
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("qdbus6 部署失败: %w", err)
+	}
+
+	return nil
 }
 
 // runRimeDeployer 运行 rime_deployer
@@ -112,6 +141,7 @@ func (d *linuxDeployer) restartInputMethod() error {
 }
 
 // restartFcitx5 重启 fcitx5
+// 参考 Shell 脚本使用 fcitx5-remote -r
 func (d *linuxDeployer) restartFcitx5() error {
 	// 检查 fcitx5 是否运行
 	checkCmd := exec.Command("pgrep", "fcitx5")
@@ -125,6 +155,7 @@ func (d *linuxDeployer) restartFcitx5() error {
 }
 
 // restartIBus 重启 ibus
+// 参考 Shell 脚本使用 ibus-daemon -drx
 func (d *linuxDeployer) restartIBus() error {
 	// 检查 ibus 是否运行
 	checkCmd := exec.Command("pgrep", "ibus-daemon")
@@ -133,6 +164,6 @@ func (d *linuxDeployer) restartIBus() error {
 	}
 
 	// 重启 ibus
-	cmd := exec.Command("ibus", "restart")
+	cmd := exec.Command("ibus-daemon", "-drx")
 	return cmd.Run()
 }

@@ -6,9 +6,11 @@ import (
 
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"rime-wanxiang-updater/internal/config"
 	"rime-wanxiang-updater/internal/types"
 	"rime-wanxiang-updater/internal/updater"
+	"rime-wanxiang-updater/internal/version"
 )
 
 // ViewState 视图状态
@@ -19,6 +21,8 @@ const (
 	ViewMenu
 	ViewUpdating
 	ViewConfig
+	ViewConfigEdit // 新增：配置编辑
+	ViewResult     // 新增：显示更新结果
 )
 
 // WizardStep 向导步骤
@@ -27,28 +31,45 @@ type WizardStep int
 const (
 	WizardSchemeType WizardStep = iota
 	WizardSchemeVariant
+	WizardDownloadSource
 	WizardComplete
 )
 
 // Model Bubble Tea 模型
 type Model struct {
-	cfg           *config.Manager
-	state         ViewState
-	wizardStep    WizardStep
-	menuChoice    int
-	schemeChoice  string
-	variantChoice string
-	updating      bool
-	progress      progress.Model
-	progressMsg   string
-	err           error
-	width         int
-	height        int
+	cfg              *config.Manager
+	state            ViewState
+	wizardStep       WizardStep
+	menuChoice       int
+	configChoice     int    // 配置菜单选择
+	editingKey       string // 正在编辑的配置键
+	editingValue     string // 编辑中的值
+	schemeChoice     string
+	variantChoice    string
+	mirrorChoice     bool   // 是否使用镜像
+	updating         bool
+	progress         progress.Model
+	progressMsg      string
+	downloadSource   string  // 下载源
+	downloadFileName string  // 下载文件名
+	downloaded       int64   // 已下载字节
+	totalSize        int64   // 总大小字节
+	downloadSpeed    float64 // 下载速度
+	isDownloading    bool    // 是否在下载中
+	progressChan     chan UpdateMsg          // 进度通道
+	completionChan   chan UpdateCompleteMsg  // 完成通道
+	err              error
+	resultMsg        string // 结果消息
+	resultSuccess    bool   // 是否成功
+	resultSkipped    bool   // 是否跳过更新（已是最新版本）
+	width            int
+	height           int
 }
 
 // NewModel 创建新模型
 func NewModel(cfg *config.Manager) Model {
 	p := progress.New(progress.WithDefaultGradient())
+	p.Width = 60 // 设置默认宽度
 
 	// 检查是否需要首次配置
 	state := ViewMenu
@@ -72,12 +93,20 @@ func (m Model) Init() tea.Cmd {
 
 // UpdateMsg 更新消息类型
 type UpdateMsg struct {
-	message string
-	percent float64
+	message      string
+	percent      float64
+	source       string  // 下载源
+	fileName     string  // 文件名
+	downloaded   int64   // 已下载字节
+	total        int64   // 总大小字节
+	speed        float64 // 下载速度 MB/s
+	downloadMode bool    // 是否在下载模式
 }
 
 type UpdateCompleteMsg struct {
-	err error
+	err        error
+	updateType string // 更新类型：词库、方案、模型、自动
+	skipped    bool   // 是否跳过更新（已是最新版本）
 }
 
 // Update 更新模型
@@ -97,6 +126,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleMenuInput(msg)
 		case ViewConfig:
 			return m.handleConfigInput(msg)
+		case ViewConfigEdit:
+			return m.handleConfigEditInput(msg)
+		case ViewResult:
+			return m.handleResultInput(msg)
 		case ViewUpdating:
 			// 更新中不接受输入
 			return m, nil
@@ -104,16 +137,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case UpdateMsg:
 		m.progressMsg = msg.message
-		if msg.percent >= 0 {
-			cmd := m.progress.SetPercent(msg.percent)
-			return m, cmd
+
+		// 更新下载信息
+		if msg.downloadMode {
+			m.isDownloading = true
+			m.downloadSource = msg.source
+			m.downloadFileName = msg.fileName
+			m.downloaded = msg.downloaded
+			m.totalSize = msg.total
+			m.downloadSpeed = msg.speed
+		} else {
+			m.isDownloading = false
 		}
-		return m, nil
+
+		// 更新进度条 - 移除 >= 0 的检查，允许 0 值
+		cmd := m.progress.SetPercent(msg.percent)
+		// 继续监听下一个进度消息
+		if m.progressChan != nil && m.completionChan != nil {
+			return m, tea.Batch(cmd, listenForProgress(m.progressChan, m.completionChan))
+		}
+		return m, cmd
 
 	case UpdateCompleteMsg:
 		m.updating = false
-		m.err = msg.err
-		m.state = ViewMenu
+		m.state = ViewResult // 切换到结果视图
+
+		// 清理 channel
+		m.progressChan = nil
+		m.completionChan = nil
+
+		// 保存 skipped 状态
+		m.resultSkipped = msg.skipped
+
+		if msg.err != nil {
+			m.resultSuccess = false
+			m.resultMsg = fmt.Sprintf("%s更新失败: %v", msg.updateType, msg.err)
+		} else if msg.skipped {
+			m.resultSuccess = true
+			m.resultMsg = fmt.Sprintf("%s已是最新版本，无需更新", msg.updateType)
+		} else {
+			m.resultSuccess = true
+			m.resultMsg = fmt.Sprintf("%s更新完成！", msg.updateType)
+		}
 		return m, nil
 	}
 
@@ -128,7 +193,8 @@ func (m Model) handleWizardInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "1":
 			m.cfg.Config.SchemeType = "base"
 			m.schemeChoice = "base"
-			return m.completeWizard()
+			m.wizardStep = WizardDownloadSource
+			return m, nil
 		case "2":
 			m.cfg.Config.SchemeType = "pro"
 			m.wizardStep = WizardSchemeVariant
@@ -144,7 +210,20 @@ func (m Model) handleWizardInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if variant, ok := types.SchemeMap[key]; ok {
 			m.schemeChoice = variant
+			m.wizardStep = WizardDownloadSource
+			return m, nil
+		}
+
+	case WizardDownloadSource:
+		switch msg.String() {
+		case "1":
+			m.mirrorChoice = true
 			return m.completeWizard()
+		case "2":
+			m.mirrorChoice = false
+			return m.completeWizard()
+		case "q", "ctrl+c":
+			return m, tea.Quit
 		}
 	}
 	return m, nil
@@ -152,6 +231,9 @@ func (m Model) handleWizardInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // completeWizard 完成向导
 func (m Model) completeWizard() (tea.Model, tea.Cmd) {
+	// 保存镜像选择
+	m.cfg.Config.UseMirror = m.mirrorChoice
+
 	// 获取实际文件名
 	schemeFile, dictFile, err := m.cfg.GetActualFilenames(m.schemeChoice)
 	if err != nil {
@@ -238,59 +320,321 @@ func (m Model) handleConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "esc":
 		m.state = ViewMenu
+		m.configChoice = 0
 		return m, nil
 	case "ctrl+c":
 		return m, tea.Quit
+	case "up", "k":
+		if m.configChoice > 0 {
+			m.configChoice--
+		}
+	case "down", "j":
+		// 可编辑的配置项数量（不包括 Engine 和排除文件）
+		maxChoice := 3 // UseMirror, ProxyEnabled, AutoUpdate
+		if m.cfg.Config.ProxyEnabled {
+			maxChoice += 2 // ProxyType, ProxyAddress
+		}
+		if m.configChoice < maxChoice {
+			m.configChoice++
+		}
+	case "enter":
+		// 根据选择进入编辑模式
+		return m.startConfigEdit()
 	}
 	return m, nil
 }
 
+// startConfigEdit 开始编辑配置
+func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
+	configItems := []string{"use_mirror", "auto_update", "proxy_enabled"}
+	if m.cfg.Config.ProxyEnabled {
+		configItems = append(configItems, "proxy_type", "proxy_address")
+	}
+
+	if m.configChoice < len(configItems) {
+		m.editingKey = configItems[m.configChoice]
+
+		// 设置初始编辑值
+		switch m.editingKey {
+		case "use_mirror":
+			if m.cfg.Config.UseMirror {
+				m.editingValue = "true"
+			} else {
+				m.editingValue = "false"
+			}
+		case "auto_update":
+			if m.cfg.Config.AutoUpdate {
+				m.editingValue = "true"
+			} else {
+				m.editingValue = "false"
+			}
+		case "proxy_enabled":
+			if m.cfg.Config.ProxyEnabled {
+				m.editingValue = "true"
+			} else {
+				m.editingValue = "false"
+			}
+		case "proxy_type":
+			m.editingValue = m.cfg.Config.ProxyType
+		case "proxy_address":
+			m.editingValue = m.cfg.Config.ProxyAddress
+		}
+
+		m.state = ViewConfigEdit
+	}
+	return m, nil
+}
+
+// handleConfigEditInput 处理配置编辑输入
+func (m Model) handleConfigEditInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		// 取消编辑
+		m.state = ViewConfig
+		m.editingKey = ""
+		m.editingValue = ""
+		return m, nil
+	case "enter":
+		// 保存编辑
+		return m.saveConfigEdit()
+	case "backspace":
+		if len(m.editingValue) > 0 {
+			m.editingValue = m.editingValue[:len(m.editingValue)-1]
+		}
+	default:
+		// 对于布尔值，使用特殊处理
+		if m.editingKey == "use_mirror" || m.editingKey == "auto_update" || m.editingKey == "proxy_enabled" {
+			key := msg.String()
+			if key == "t" || key == "T" {
+				m.editingValue = "true"
+			} else if key == "f" || key == "F" {
+				m.editingValue = "false"
+			}
+		} else {
+			// 其他配置项允许输入
+			if len(msg.String()) == 1 {
+				m.editingValue += msg.String()
+			}
+		}
+	}
+	return m, nil
+}
+
+// saveConfigEdit 保存配置编辑
+func (m Model) saveConfigEdit() (tea.Model, tea.Cmd) {
+	// 更新配置
+	switch m.editingKey {
+	case "use_mirror":
+		m.cfg.Config.UseMirror = m.editingValue == "true"
+	case "auto_update":
+		m.cfg.Config.AutoUpdate = m.editingValue == "true"
+	case "proxy_enabled":
+		m.cfg.Config.ProxyEnabled = m.editingValue == "true"
+	case "proxy_type":
+		m.cfg.Config.ProxyType = m.editingValue
+	case "proxy_address":
+		m.cfg.Config.ProxyAddress = m.editingValue
+	}
+
+	// 保存到文件
+	if err := m.cfg.SaveConfig(); err != nil {
+		m.err = err
+		m.state = ViewConfig
+		return m, nil
+	}
+
+	// 返回配置视图
+	m.state = ViewConfig
+	m.editingKey = ""
+	m.editingValue = ""
+	return m, nil
+}
+
+// handleResultInput 处理结果页面输入
+func (m Model) handleResultInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// 按任意键返回主菜单
+	if msg.String() == "ctrl+c" {
+		return m, tea.Quit
+	}
+	m.state = ViewMenu
+	return m, nil
+}
+
 // runDictUpdate 运行词库更新
-func (m Model) runDictUpdate() tea.Cmd {
-	return func() tea.Msg {
+func (m *Model) runDictUpdate() tea.Cmd {
+	// 创建通道
+	m.progressChan = make(chan UpdateMsg, 100)
+	m.completionChan = make(chan UpdateCompleteMsg, 1)
+
+	// 启动更新 goroutine
+	go func() {
 		dictUpdater := updater.NewDictUpdater(m.cfg)
-		if err := dictUpdater.Run(); err != nil {
-			return UpdateCompleteMsg{err: err}
+
+		// 进度回调
+		progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
+			select {
+			case m.progressChan <- UpdateMsg{
+				message:      message,
+				percent:      percent,
+				source:       source,
+				fileName:     fileName,
+				downloaded:   downloaded,
+				total:        total,
+				speed:        speed,
+				downloadMode: downloadMode,
+			}:
+			default:
+				// Channel 满了，跳过
+			}
 		}
 
-		if err := dictUpdater.Deploy(); err != nil {
-			return UpdateCompleteMsg{err: err}
+		// 检查是否需要更新
+		status, err := dictUpdater.GetStatus()
+		if err != nil {
+			m.completionChan <- UpdateCompleteMsg{err: err, updateType: "词库", skipped: false}
+			close(m.progressChan)
+			return
 		}
 
-		return UpdateCompleteMsg{err: nil}
+		// 如果不需要更新，直接返回
+		if !status.NeedsUpdate {
+			progressFunc("词库已是最新版本，跳过更新", 1.0, "", "", 0, 0, 0, false)
+			m.completionChan <- UpdateCompleteMsg{err: nil, updateType: "词库", skipped: true}
+			close(m.progressChan)
+			return
+		}
+
+		// 执行更新
+		if err = dictUpdater.Run(progressFunc); err == nil {
+			err = dictUpdater.Deploy()
+		}
+
+		// 发送完成消息
+		m.completionChan <- UpdateCompleteMsg{err: err, updateType: "词库", skipped: false}
+		close(m.progressChan)
+	}()
+
+	// 返回监听命令
+	return listenForProgress(m.progressChan, m.completionChan)
+}
+
+// listenForProgress 持续监听进度更新
+func listenForProgress(progressChan chan UpdateMsg, completeChan chan UpdateCompleteMsg) tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case msg, ok := <-progressChan:
+			if ok {
+				return msg
+			}
+			// Channel 已关闭，等待完成消息
+			return <-completeChan
+		case msg := <-completeChan:
+			return msg
+		}
 	}
 }
 
 // runSchemeUpdate 运行方案更新
-func (m Model) runSchemeUpdate() tea.Cmd {
-	return func() tea.Msg {
+func (m *Model) runSchemeUpdate() tea.Cmd {
+	// 创建通道
+	m.progressChan = make(chan UpdateMsg, 100)
+	m.completionChan = make(chan UpdateCompleteMsg, 1)
+
+	// 启动更新 goroutine
+	go func() {
 		schemeUpdater := updater.NewSchemeUpdater(m.cfg)
-		if err := schemeUpdater.Run(); err != nil {
-			return UpdateCompleteMsg{err: err}
+
+		// 进度回调
+		progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
+			select {
+			case m.progressChan <- UpdateMsg{
+				message:      message,
+				percent:      percent,
+				source:       source,
+				fileName:     fileName,
+				downloaded:   downloaded,
+				total:        total,
+				speed:        speed,
+				downloadMode: downloadMode,
+			}:
+			default:
+				// Channel 满了，跳过
+			}
 		}
 
-		if err := schemeUpdater.Deploy(); err != nil {
-			return UpdateCompleteMsg{err: err}
+		// 检查是否需要更新
+		status, err := schemeUpdater.GetStatus()
+		if err != nil {
+			m.completionChan <- UpdateCompleteMsg{err: err, updateType: "方案", skipped: false}
+			close(m.progressChan)
+			return
 		}
 
-		return UpdateCompleteMsg{err: nil}
-	}
+		// 如果不需要更新，直接返回
+		if !status.NeedsUpdate {
+			progressFunc("方案已是最新版本，跳过更新", 1.0, "", "", 0, 0, 0, false)
+			m.completionChan <- UpdateCompleteMsg{err: nil, updateType: "方案", skipped: true}
+			close(m.progressChan)
+			return
+		}
+
+		// 执行更新
+		if err = schemeUpdater.Run(progressFunc); err == nil {
+			err = schemeUpdater.Deploy()
+		}
+
+		// 发送完成消息
+		m.completionChan <- UpdateCompleteMsg{err: err, updateType: "方案", skipped: false}
+		close(m.progressChan)
+	}()
+
+	// 返回监听命令
+	return listenForProgress(m.progressChan, m.completionChan)
 }
 
 // runModelUpdate 运行模型更新
-func (m Model) runModelUpdate() tea.Cmd {
-	return func() tea.Msg {
+func (m *Model) runModelUpdate() tea.Cmd {
+	// 创建通道
+	m.progressChan = make(chan UpdateMsg, 100)
+	m.completionChan = make(chan UpdateCompleteMsg, 1)
+
+	// 启动更新 goroutine
+	go func() {
 		modelUpdater := updater.NewModelUpdater(m.cfg)
-		if err := modelUpdater.Run(); err != nil {
-			return UpdateCompleteMsg{err: err}
+
+		// 进度回调
+		progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
+			select {
+			case m.progressChan <- UpdateMsg{
+				message:      message,
+				percent:      percent,
+				source:       source,
+				fileName:     fileName,
+				downloaded:   downloaded,
+				total:        total,
+				speed:        speed,
+				downloadMode: downloadMode,
+			}:
+			default:
+				// Channel 满了，跳过
+			}
 		}
 
-		if err := modelUpdater.Deploy(); err != nil {
-			return UpdateCompleteMsg{err: err}
+		// 执行更新
+		var err error
+		if err = modelUpdater.Run(progressFunc); err == nil {
+			err = modelUpdater.Deploy()
 		}
 
-		return UpdateCompleteMsg{err: nil}
-	}
+		// 发送完成消息
+		m.completionChan <- UpdateCompleteMsg{err: err, updateType: "模型", skipped: false}
+		close(m.progressChan)
+	}()
+
+	// 返回监听命令
+	return listenForProgress(m.progressChan, m.completionChan)
 }
 
 // runAutoUpdate 运行自动更新
@@ -298,18 +642,18 @@ func (m Model) runAutoUpdate() tea.Cmd {
 	return func() tea.Msg {
 		combined := updater.NewCombinedUpdater(m.cfg)
 		if err := combined.FetchAllUpdates(); err != nil {
-			return UpdateCompleteMsg{err: err}
+			return UpdateCompleteMsg{err: err, updateType: "自动", skipped: false}
 		}
 
 		if !combined.HasAnyUpdate() {
-			return UpdateCompleteMsg{err: fmt.Errorf("所有组件均为最新版本")}
+			return UpdateCompleteMsg{err: nil, updateType: "所有组件", skipped: true}
 		}
 
 		if err := combined.RunAll(); err != nil {
-			return UpdateCompleteMsg{err: err}
+			return UpdateCompleteMsg{err: err, updateType: "自动", skipped: false}
 		}
 
-		return UpdateCompleteMsg{err: nil}
+		return UpdateCompleteMsg{err: nil, updateType: "自动", skipped: false}
 	}
 }
 
@@ -324,6 +668,10 @@ func (m Model) View() string {
 		return m.renderUpdating()
 	case ViewConfig:
 		return m.renderConfig()
+	case ViewConfigEdit:
+		return m.renderConfigEdit()
+	case ViewResult:
+		return m.renderResult()
 	}
 	return ""
 }
@@ -332,39 +680,65 @@ func (m Model) View() string {
 func (m Model) renderWizard() string {
 	var b strings.Builder
 
-	// 标题
-	title := headerStyle.Render("Rime 万象输入法更新工具 " + types.VERSION)
-	b.WriteString("\n" + title + "\n\n")
+	// ASCII Logo
+	logo := logoStyle.Render(asciiLogo)
+	b.WriteString(logo + "\n")
+
+	// 版本信息
+	version := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(version) + "\n\n")
+
+	// 扫描线效果
+	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
 
 	// 错误信息
 	if m.err != nil {
-		errorMsg := errorStyle.Render("❌ 错误: " + m.err.Error())
+		errorMsg := errorStyle.Render("⚠ 严重错误 ⚠ " + m.err.Error())
 		b.WriteString(errorMsg + "\n\n")
 	}
 
 	switch m.wizardStep {
 	case WizardSchemeType:
-		wizardTitle := titleStyle.Render("🔧 首次运行配置向导")
-		b.WriteString(wizardTitle + "\n\n")
+		wizardTitle := titleStyle.Render("⚡ 初始化向导 ⚡")
+		b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(wizardTitle) + "\n\n")
 
-		question := infoBoxStyle.Render("请选择方案版本:")
+		question := infoBoxStyle.Render("▸ 选择方案版本:")
 		b.WriteString(question + "\n\n")
 
-		b.WriteString(menuItemStyle.Render("[1] 万象基础版") + "\n")
-		b.WriteString(menuItemStyle.Render("[2] 万象增强版（支持各种辅助码）") + "\n\n")
+		b.WriteString(menuItemStyle.Render("  [1] ► 万象基础版") + "\n")
+		b.WriteString(menuItemStyle.Render("  [2] ► 万象增强版（支持辅助码）") + "\n\n")
 
-		hint := hintStyle.Render("请输入选择 (1-2, q 退出)")
+		b.WriteString(gridStyle.Render(gridLine) + "\n")
+		hint := hintStyle.Render("[>] Input: 1-2 | [Q] Quit")
 		b.WriteString(hint)
 
 	case WizardSchemeVariant:
-		question := infoBoxStyle.Render("请选择辅助码方案:")
+		wizardTitle := titleStyle.Render("⚡ 初始化向导 ⚡")
+		b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(wizardTitle) + "\n\n")
+
+		question := infoBoxStyle.Render("▸ 选择辅助码方案:")
 		b.WriteString(question + "\n\n")
 
 		for k, v := range types.SchemeMap {
-			b.WriteString(menuItemStyle.Render(fmt.Sprintf("[%s] %s", k, v)) + "\n")
+			b.WriteString(menuItemStyle.Render(fmt.Sprintf("  [%s] ► %s", k, v)) + "\n")
 		}
 
-		hint := hintStyle.Render("\n请输入选择 (1-7, q 退出)")
+		b.WriteString("\n" + gridStyle.Render(gridLine) + "\n")
+		hint := hintStyle.Render("[>] Input: 1-7 | [Q] Quit")
+		b.WriteString(hint)
+
+	case WizardDownloadSource:
+		wizardTitle := titleStyle.Render("⚡ 初始化向导 ⚡")
+		b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(wizardTitle) + "\n\n")
+
+		question := infoBoxStyle.Render("▸ 选择下载源:")
+		b.WriteString(question + "\n\n")
+
+		b.WriteString(menuItemStyle.Render("  [1] ► CNB 镜像（推荐，国内访问更快）") + "\n")
+		b.WriteString(menuItemStyle.Render("  [2] ► GitHub 官方源") + "\n\n")
+
+		b.WriteString(gridStyle.Render(gridLine) + "\n")
+		hint := hintStyle.Render("[>] Input: 1-2 | [Q] Quit")
 		b.WriteString(hint)
 	}
 
@@ -375,46 +749,61 @@ func (m Model) renderWizard() string {
 func (m Model) renderMenu() string {
 	var b strings.Builder
 
-	// 标题
-	title := headerStyle.Render("Rime 万象输入法更新工具 " + types.VERSION)
-	b.WriteString("\n" + title + "\n\n")
+	// ASCII Logo
+	logo := logoStyle.Render(asciiLogo)
+	b.WriteString(logo + "\n")
 
-	// 消息显示
-	if m.err != nil {
-		if m.err.Error() == "所有组件均为最新版本" {
-			msg := successStyle.Render("✓ " + m.err.Error())
-			b.WriteString(msg + "\n\n")
-		} else {
-			msg := errorStyle.Render("❌ 错误: " + m.err.Error())
-			b.WriteString(msg + "\n\n")
-		}
-		m.err = nil
-	}
+	// 版本和状态信息
+	version := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(version) + "\n")
+
+	// 系统配置概览
+	configInfo := fmt.Sprintf("引擎: %s | 方案: %s | 下载源: %s",
+		m.cfg.Config.Engine,
+		m.cfg.Config.SchemeType,
+		func() string {
+			if m.cfg.Config.UseMirror {
+				return "CNB镜像"
+			}
+			return "GitHub"
+		}())
+	statusInfo := statusOnlineStyle.Render("⬢ " + configInfo + " ⬢")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(statusInfo) + "\n\n")
+
+	// 扫描线效果
+	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
 
 	// 主菜单标题
-	menuTitle := titleStyle.Render("📋 主菜单")
-	b.WriteString(menuTitle + "\n\n")
+	menuTitle := titleStyle.Render("⚡ 主控制面板 ⚡")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(menuTitle) + "\n\n")
 
 	// 菜单项
-	menuItems := []string{
-		"📚 词库下载",
-		"⚙️  方案下载",
-		"🤖 模型下载",
-		"🔄 自动更新",
-		"🔧 修改配置",
-		"❌ 退出程序",
+	menuItems := []struct {
+		icon string
+		text string
+	}{
+		{"▣", "词库更新"},
+		{"▣", "方案更新"},
+		{"▣", "模型更新"},
+		{"▣", "自动更新"},
+		{"▣", "查看配置"},
+		{"▣", "退出程序"},
 	}
 
 	for i, item := range menuItems {
+		itemText := fmt.Sprintf(" %s  [%d] %s", item.icon, i+1, item.text)
 		if i == m.menuChoice {
-			b.WriteString(selectedMenuItemStyle.Render(fmt.Sprintf("▶ [%d] %s", i+1, item)) + "\n")
+			b.WriteString(selectedMenuItemStyle.Render("►" + itemText) + "\n")
 		} else {
-			b.WriteString(menuItemStyle.Render(fmt.Sprintf("  [%d] %s", i+1, item)) + "\n")
+			b.WriteString(menuItemStyle.Render(" " + itemText) + "\n")
 		}
 	}
 
+	// 网格线
+	b.WriteString("\n" + gridStyle.Render(gridLine) + "\n")
+
 	// 提示
-	hint := hintStyle.Render("\n请输入选择 (1-6, ↑↓/jk 导航, q 退出)")
+	hint := hintStyle.Render("[>] Input: 1-6 | Navigate: J/K or Arrow Keys | [Q] Quit")
 	b.WriteString(hint)
 
 	return containerStyle.Render(b.String())
@@ -424,20 +813,99 @@ func (m Model) renderMenu() string {
 func (m Model) renderUpdating() string {
 	var b strings.Builder
 
-	// 标题
-	title := headerStyle.Render("正在更新...")
-	b.WriteString("\n" + title + "\n\n")
+	// ASCII Logo
+	logo := logoStyle.Render(asciiLogo)
+	b.WriteString(logo + "\n")
 
-	// 进度消息
-	msg := progressMsgStyle.Render(m.progressMsg)
-	b.WriteString(msg + "\n\n")
+	// 版本信息
+	version := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(version) + "\n")
 
-	// 进度条
-	progressBar := infoBoxStyle.Render(m.progress.View())
-	b.WriteString(progressBar + "\n\n")
+	// 处理状态指示器
+	status := statusProcessingStyle.Render("⬢ 处理中 ⬢")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(status) + "\n\n")
+
+	// 扫描线效果
+	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
+
+	// 更新标题
+	title := titleStyle.Render("⚡ 正在更新 ⚡")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(title) + "\n\n")
+
+	// 信息框样式
+	infoStyle := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(neonCyan).
+		Padding(0, 2).
+		Width(60)
+
+	// 如果正在下载，显示详细的下载信息
+	if m.isDownloading {
+		var downloadInfo strings.Builder
+
+		// 下载源
+		if m.downloadSource != "" {
+			downloadInfo.WriteString(configKeyStyle.Render("下载源: ") +
+				configValueStyle.Render(m.downloadSource) + "\n")
+		}
+
+		// 文件名
+		if m.downloadFileName != "" {
+			downloadInfo.WriteString(configKeyStyle.Render("文件名: ") +
+				configValueStyle.Render(m.downloadFileName) + "\n")
+		}
+
+		// 下载进度
+		if m.totalSize > 0 {
+			downloadedMB := float64(m.downloaded) / 1024 / 1024
+			totalMB := float64(m.totalSize) / 1024 / 1024
+			downloadInfo.WriteString(configKeyStyle.Render("进度:   ") +
+				successStyle.Render(fmt.Sprintf("%.2f MB / %.2f MB", downloadedMB, totalMB)) + "\n")
+		} else if m.downloaded > 0 {
+			downloadedMB := float64(m.downloaded) / 1024 / 1024
+			downloadInfo.WriteString(configKeyStyle.Render("已下载: ") +
+				successStyle.Render(fmt.Sprintf("%.2f MB", downloadedMB)) + "\n")
+		}
+
+		// 下载速度
+		if m.downloadSpeed > 0 {
+			downloadInfo.WriteString(configKeyStyle.Render("速度:   ") +
+				neonGreenStyle.Render(fmt.Sprintf("%.2f MB/s", m.downloadSpeed)))
+		}
+
+		b.WriteString(infoStyle.Render(downloadInfo.String()) + "\n\n")
+	}
+
+	// 进度消息 - 闪烁效果
+	msgBox := lipgloss.NewStyle().
+		Border(lipgloss.ThickBorder()).
+		BorderForeground(neonGreen).
+		Padding(1, 2).
+		Width(60)
+
+	msg := progressMsgStyle.Render("▸ " + m.progressMsg)
+	b.WriteString(msgBox.Render(msg) + "\n\n")
+
+	// 进度条 - 只在下载时显示
+	if m.isDownloading && m.totalSize > 0 {
+		progressBox := lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(neonCyan).
+			Padding(0, 1)
+
+		// 计算百分比
+		percent := float64(m.downloaded) / float64(m.totalSize) * 100
+		progressText := fmt.Sprintf("%s\n%.1f%%", m.progress.View(), percent)
+
+		progressBar := progressBox.Render(progressText)
+		b.WriteString(progressBar + "\n\n")
+	}
+
+	// 扫描线动画
+	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
 
 	// 提示
-	hint := hintStyle.Render("请稍候...")
+	hint := hintStyle.Render("[...] Please wait... System is updating...")
 	b.WriteString(hint)
 
 	return containerStyle.Render(b.String())
@@ -447,59 +915,228 @@ func (m Model) renderUpdating() string {
 func (m Model) renderConfig() string {
 	var b strings.Builder
 
-	// 标题
-	title := headerStyle.Render("当前配置")
-	b.WriteString("\n" + title + "\n\n")
+	// ASCII Logo
+	logo := logoStyle.Render(asciiLogo)
+	b.WriteString(logo + "\n")
 
-	// 配置项
-	configs := []struct {
-		key   string
-		value string
+	// 版本信息
+	version := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(version) + "\n\n")
+
+	// 扫描线效果
+	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
+
+	// 标题
+	title := titleStyle.Render("⚡ 系统配置 ⚡")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(title) + "\n\n")
+
+	// 配置项 - 重新组织，标记可编辑项
+	editableConfigs := []struct {
+		key      string
+		value    string
+		editable bool
+		index    int
 	}{
-		{"引擎", m.cfg.Config.Engine},
-		{"方案类型", m.cfg.Config.SchemeType},
-		{"方案文件", m.cfg.Config.SchemeFile},
-		{"词库文件", m.cfg.Config.DictFile},
-		{"使用镜像", fmt.Sprintf("%v", m.cfg.Config.UseMirror)},
-		{"GitHub Token", m.cfg.Config.GithubToken},
-		{"排除文件", fmt.Sprintf("%v", m.cfg.Config.ExcludeFiles)},
-		{"自动更新", fmt.Sprintf("%v", m.cfg.Config.AutoUpdate)},
-		{"代理启用", fmt.Sprintf("%v", m.cfg.Config.ProxyEnabled)},
+		{"引擎", m.cfg.Config.Engine, false, -1},
+		{"方案类型", m.cfg.Config.SchemeType, false, -1},
+		{"方案文件", m.cfg.Config.SchemeFile, false, -1},
+		{"词库文件", m.cfg.Config.DictFile, false, -1},
+		{"使用镜像", fmt.Sprintf("%v", m.cfg.Config.UseMirror), true, 0},
+		{"自动更新", fmt.Sprintf("%v", m.cfg.Config.AutoUpdate), true, 1},
+		{"代理启用", fmt.Sprintf("%v", m.cfg.Config.ProxyEnabled), true, 2},
 	}
 
+	editIndex := 3
 	if m.cfg.Config.ProxyEnabled {
-		configs = append(configs,
+		editableConfigs = append(editableConfigs,
 			struct {
-				key   string
-				value string
-			}{"代理类型", m.cfg.Config.ProxyType},
+				key      string
+				value    string
+				editable bool
+				index    int
+			}{"代理类型", m.cfg.Config.ProxyType, true, editIndex},
 			struct {
-				key   string
-				value string
-			}{"代理地址", m.cfg.Config.ProxyAddress},
+				key      string
+				value    string
+				editable bool
+				index    int
+			}{"代理地址", m.cfg.Config.ProxyAddress, true, editIndex + 1},
 		)
 	}
 
 	var configContent strings.Builder
-	for _, cfg := range configs {
+	for _, cfg := range editableConfigs {
 		key := configKeyStyle.Render(cfg.key + ":")
 		value := configValueStyle.Render(cfg.value)
-		configContent.WriteString(key + " " + value + "\n")
+		line := "  ▸ " + key + " " + value
+
+		// 如果是可编辑且被选中，添加高亮
+		if cfg.editable && cfg.index == m.configChoice {
+			line = selectedMenuItemStyle.Render("►" + line)
+		} else {
+			line = menuItemStyle.Render(" " + line)
+		}
+
+		configContent.WriteString(line + "\n")
 	}
 
 	configBox := infoBoxStyle.Render(configContent.String())
-	b.WriteString(configBox + "\n")
+	b.WriteString(configBox + "\n\n")
 
 	// 配置文件路径
-	pathInfo := hintStyle.Render("配置文件路径: " + m.cfg.ConfigPath)
+	pathBox := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(neonPurple).
+		Padding(0, 1).
+		Foreground(neonPurple)
+
+	pathInfo := pathBox.Render("配置路径: " + m.cfg.ConfigPath)
 	b.WriteString(pathInfo + "\n\n")
 
 	// 提示信息
-	hint1 := warningStyle.Render("⚠ 提示: 可以手动编辑配置文件来修改设置")
+	hint1 := warningStyle.Render("[!] Use Arrow Keys to select, Enter to edit")
 	b.WriteString(hint1 + "\n\n")
 
-	hint2 := hintStyle.Render("按 q 或 ESC 返回主菜单")
+	b.WriteString(gridStyle.Render(gridLine) + "\n")
+
+	hint2 := hintStyle.Render("[>] Navigate: J/K or Arrow Keys | [Enter] Edit | [Q]/[ESC] Back")
 	b.WriteString(hint2)
+
+	return containerStyle.Render(b.String())
+}
+
+// renderConfigEdit 渲染配置编辑
+func (m Model) renderConfigEdit() string {
+	var b strings.Builder
+
+	// ASCII Logo
+	logo := logoStyle.Render(asciiLogo)
+	b.WriteString(logo + "\n")
+
+	// 版本信息
+	version := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(version) + "\n\n")
+
+	// 扫描线效果
+	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
+
+	// 标题
+	title := titleStyle.Render("⚡ 编辑配置 ⚡")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(title) + "\n\n")
+
+	// 获取配置项名称
+	var configName string
+	var inputHint string
+	switch m.editingKey {
+	case "use_mirror":
+		configName = "使用镜像"
+		inputHint = "Input: t (true) or f (false)"
+	case "auto_update":
+		configName = "自动更新"
+		inputHint = "Input: t (true) or f (false)"
+	case "proxy_enabled":
+		configName = "代理启用"
+		inputHint = "Input: t (true) or f (false)"
+	case "proxy_type":
+		configName = "代理类型"
+		inputHint = "Input proxy type: http/https/socks5"
+	case "proxy_address":
+		configName = "代理地址"
+		inputHint = "Input proxy address (e.g. 127.0.0.1:7890)"
+	}
+
+	// 编辑框
+	editBox := lipgloss.NewStyle().
+		Border(lipgloss.ThickBorder()).
+		BorderForeground(neonMagenta).
+		Padding(1, 2).
+		Width(60)
+
+	var editContent strings.Builder
+	editContent.WriteString(configKeyStyle.Render("配置项: ") + configValueStyle.Render(configName) + "\n\n")
+	editContent.WriteString(configKeyStyle.Render("当前值: "))
+
+	// 显示编辑值，添加光标效果
+	valueWithCursor := m.editingValue + blinkStyle.Render("_")
+	editContent.WriteString(successStyle.Render(valueWithCursor) + "\n\n")
+	editContent.WriteString(hintStyle.Render(inputHint))
+
+	editBoxRendered := editBox.Render(editContent.String())
+	b.WriteString(editBoxRendered + "\n\n")
+
+	// 网格线
+	b.WriteString(gridStyle.Render(gridLine) + "\n\n")
+
+	// 提示
+	hint := hintStyle.Render("[>] [Enter] Save | [ESC] Cancel | [Backspace] Delete")
+	b.WriteString(hint)
+
+	return containerStyle.Render(b.String())
+}
+
+// renderResult 渲染更新结果
+func (m Model) renderResult() string {
+	var b strings.Builder
+
+	// ASCII Logo
+	logo := logoStyle.Render(asciiLogo)
+	b.WriteString(logo + "\n")
+
+	// 版本信息
+	version := versionStyle.Render(">>> SYSTEM VERSION: " + version.GetVersion() + " <<<")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(version) + "\n\n")
+
+	// 扫描线效果
+	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
+
+	// 结果标题
+	title := titleStyle.Render("⚡ 更新结果 ⚡")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(title) + "\n\n")
+
+	// 结果消息 - 根据成功/失败使用不同样式
+	var resultBox lipgloss.Style
+	var icon string
+
+	if m.resultSuccess {
+		resultBox = lipgloss.NewStyle().
+			Border(lipgloss.ThickBorder()).
+			BorderForeground(neonGreen).
+			Padding(2, 3).
+			Width(60)
+		icon = "✓"
+	} else {
+		resultBox = lipgloss.NewStyle().
+			Border(lipgloss.ThickBorder()).
+			BorderForeground(glitchRed).
+			Padding(2, 3).
+			Width(60)
+		icon = "✗"
+	}
+
+	// 消息内容
+	var msgContent strings.Builder
+	if m.resultSuccess {
+		msgContent.WriteString(successStyle.Render(fmt.Sprintf("%s %s", icon, m.resultMsg)))
+		// 只有在实际执行了更新时才显示"更新已成功应用到系统"
+		if !m.resultSkipped {
+			msgContent.WriteString("\n\n")
+			msgContent.WriteString(configValueStyle.Render("更新已成功应用到系统"))
+		}
+	} else {
+		msgContent.WriteString(errorStyle.Render(fmt.Sprintf("%s %s", icon, m.resultMsg)))
+		msgContent.WriteString("\n\n")
+		msgContent.WriteString(configValueStyle.Render("请检查错误信息并重试"))
+	}
+
+	resultMessage := resultBox.Render(msgContent.String())
+	b.WriteString(resultMessage + "\n\n")
+
+	// 网格线
+	b.WriteString(gridStyle.Render(gridLine) + "\n\n")
+
+	// 提示
+	hint := blinkStyle.Render("[>] Press any key to return to main menu...")
+	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(hint))
 
 	return containerStyle.Render(b.String())
 }
