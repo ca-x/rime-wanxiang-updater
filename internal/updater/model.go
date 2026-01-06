@@ -2,6 +2,7 @@ package updater
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -45,25 +46,12 @@ func (m *ModelUpdater) GetStatus() (*types.UpdateStatus, error) {
 	if localRecord != nil {
 		status.LocalVersion = localRecord.Tag
 		status.LocalTime = localRecord.UpdateTime
+		status.NeedsUpdate = remoteInfo.UpdateTime.After(localRecord.UpdateTime)
 
-		// 对于 CNB 镜像的模型文件，检查本地文件是否存在来判断是否需要更新
-		// 因为 CNB 不提供准确的更新时间
-		if m.Config.Config.UseMirror {
-			targetPath := filepath.Join(m.Config.GetExtractPath(), types.MODEL_FILE)
-			if fileutil.FileExists(targetPath) {
-				status.NeedsUpdate = false
-				status.Message = "已是最新版本"
-			} else {
-				status.NeedsUpdate = true
-				status.Message = "本地文件不存在，需要下载"
-			}
+		if status.NeedsUpdate {
+			status.Message = fmt.Sprintf("发现新版本: %s → %s (更新时间: %s)", localRecord.Tag, remoteInfo.Tag, remoteInfo.UpdateTime.Format("2006-01-02"))
 		} else {
-			status.NeedsUpdate = remoteInfo.UpdateTime.After(localRecord.UpdateTime)
-			if status.NeedsUpdate {
-				status.Message = fmt.Sprintf("发现新版本: %s → %s (更新时间: %s)", localRecord.Tag, remoteInfo.Tag, remoteInfo.UpdateTime.Format("2006-01-02"))
-			} else {
-				status.Message = "已是最新版本"
-			}
+			status.Message = "已是最新版本"
 		}
 	} else {
 		status.LocalVersion = "未安装"
