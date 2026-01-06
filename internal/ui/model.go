@@ -507,17 +507,20 @@ func (m Model) saveConfigEdit() (tea.Model, tea.Cmd) {
 		m.cfg.Config.ProxyEnabled = m.editingValue == "true"
 	case "fcitx_compat":
 		oldValue := m.cfg.Config.FcitxCompat
-		m.cfg.Config.FcitxCompat = m.editingValue == "true"
+		newValue := m.editingValue == "true"
+		m.cfg.Config.FcitxCompat = newValue
 
-		// 如果从启用变为禁用，重置选择索引避免越界
-		if oldValue && !m.cfg.Config.FcitxCompat {
-			m.configChoice = 0
-		}
-
-		// 如果启用 fcitx 兼容，立即同步
-		if m.cfg.Config.FcitxCompat {
-			if err := m.cfg.SyncToFcitxDir(); err != nil {
-				m.err = err
+		// 处理 fcitx 兼容性的启用/禁用
+		if newValue != oldValue {
+			if newValue {
+				// 启用时立即同步
+				if err := m.cfg.SyncToFcitxDir(); err != nil {
+					m.err = err
+				}
+			} else {
+				// 禁用时：fcitx_use_link 选项会消失
+				// 光标保持在 fcitx_compat 的位置（index 3）
+				m.configChoice = 3
 			}
 		}
 	case "fcitx_use_link":
