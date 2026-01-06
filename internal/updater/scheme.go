@@ -31,6 +31,10 @@ func (s *SchemeUpdater) GetStatus() (*types.UpdateStatus, error) {
 		return nil, err
 	}
 
+	// 检查关键文件是否存在
+	keyFile := filepath.Join(s.Config.GetExtractPath(), "lua", "wanxiang.lua")
+	keyFileExists := fileutil.FileExists(keyFile)
+
 	// 获取本地版本信息
 	recordPath := s.Config.GetSchemeRecordPath()
 	localRecord := s.GetLocalRecord(recordPath)
@@ -39,6 +43,13 @@ func (s *SchemeUpdater) GetStatus() (*types.UpdateStatus, error) {
 		RemoteVersion: remoteInfo.Tag,
 		RemoteTime:    remoteInfo.UpdateTime,
 		NeedsUpdate:   true,
+	}
+
+	// 如果关键文件不存在，强制更新
+	if !keyFileExists {
+		status.LocalVersion = "未安装"
+		status.Message = fmt.Sprintf("检测到可用版本: %s (关键文件缺失)", remoteInfo.Tag)
+		return status, nil
 	}
 
 	if localRecord != nil {

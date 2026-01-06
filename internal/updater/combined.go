@@ -58,16 +58,21 @@ func (c *CombinedUpdater) FetchAllUpdates() error {
 
 // HasAnyUpdate 检查是否有任何更新
 func (c *CombinedUpdater) HasAnyUpdate() bool {
-	hasScheme := c.SchemeUpdater.UpdateInfo != nil &&
-		c.SchemeUpdater.HasUpdate(c.SchemeUpdater.UpdateInfo, c.Config.GetSchemeRecordPath())
+	// 检查方案更新 - 使用 GetStatus 来检查实际文件
+	if schemeStatus, err := c.SchemeUpdater.GetStatus(); err == nil && schemeStatus.NeedsUpdate {
+		return true
+	}
 
-	hasDict := c.DictUpdater.UpdateInfo != nil &&
-		c.DictUpdater.HasUpdate(c.DictUpdater.UpdateInfo, c.Config.GetDictRecordPath())
+	// 检查词库更新 - 使用 GetStatus 来检查实际文件
+	if dictStatus, err := c.DictUpdater.GetStatus(); err == nil && dictStatus.NeedsUpdate {
+		return true
+	}
 
+	// 检查模型更新 - 保持原有逻辑
 	hasModel := c.ModelUpdater.UpdateInfo != nil &&
 		c.ModelUpdater.HasUpdate(c.ModelUpdater.UpdateInfo, c.Config.GetModelRecordPath())
 
-	return hasScheme || hasDict || hasModel
+	return hasModel
 }
 
 // RunAll 执行所有更新
@@ -84,31 +89,33 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 		progress = func(string, string, float64, string, string, int64, int64, float64, bool) {}
 	}
 
-	// 更新方案
-	if c.SchemeUpdater.UpdateInfo != nil &&
-		c.SchemeUpdater.HasUpdate(c.SchemeUpdater.UpdateInfo, c.Config.GetSchemeRecordPath()) {
-		progress("方案", "正在更新方案...", 0.0, "", "", 0, 0, 0, false)
-		progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
-			progress("方案", message, percent*0.33, source, fileName, downloaded, total, speed, downloadMode) // 方案占 33%
-		}
-		if err := c.SchemeUpdater.Run(progressFunc); err != nil {
-			errors = append(errors, fmt.Sprintf("方案更新失败: %v", err))
-		}
-	}
-
-	// 更新词库
-	if c.DictUpdater.UpdateInfo != nil &&
-		c.DictUpdater.HasUpdate(c.DictUpdater.UpdateInfo, c.Config.GetDictRecordPath()) {
-		progress("词库", "正在更新词库...", 0.33, "", "", 0, 0, 0, false)
-		progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
-			progress("词库", message, 0.33+percent*0.33, source, fileName, downloaded, total, speed, downloadMode) // 词库占 33%
-		}
-		if err := c.DictUpdater.Run(progressFunc); err != nil {
-			errors = append(errors, fmt.Sprintf("词库更新失败: %v", err))
+	// 更新方案 - 使用 GetStatus 检查是否需要更新
+	if c.SchemeUpdater.UpdateInfo != nil {
+		if schemeStatus, err := c.SchemeUpdater.GetStatus(); err == nil && schemeStatus.NeedsUpdate {
+			progress("方案", "正在更新方案...", 0.0, "", "", 0, 0, 0, false)
+			progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
+				progress("方案", message, percent*0.33, source, fileName, downloaded, total, speed, downloadMode) // 方案占 33%
+			}
+			if err := c.SchemeUpdater.Run(progressFunc); err != nil {
+				errors = append(errors, fmt.Sprintf("方案更新失败: %v", err))
+			}
 		}
 	}
 
-	// 更新模型
+	// 更新词库 - 使用 GetStatus 检查是否需要更新
+	if c.DictUpdater.UpdateInfo != nil {
+		if dictStatus, err := c.DictUpdater.GetStatus(); err == nil && dictStatus.NeedsUpdate {
+			progress("词库", "正在更新词库...", 0.33, "", "", 0, 0, 0, false)
+			progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
+				progress("词库", message, 0.33+percent*0.33, source, fileName, downloaded, total, speed, downloadMode) // 词库占 33%
+			}
+			if err := c.DictUpdater.Run(progressFunc); err != nil {
+				errors = append(errors, fmt.Sprintf("词库更新失败: %v", err))
+			}
+		}
+	}
+
+	// 更新模型 - 保持原有逻辑
 	if c.ModelUpdater.UpdateInfo != nil &&
 		c.ModelUpdater.HasUpdate(c.ModelUpdater.UpdateInfo, c.Config.GetModelRecordPath()) {
 		progress("模型", "正在更新模型...", 0.66, "", "", 0, 0, 0, false)
