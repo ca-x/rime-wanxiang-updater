@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
+	"rime-wanxiang-updater/internal/config"
 )
 
 // ExtractZip 解压 ZIP 文件，支持排除模式
@@ -17,8 +17,18 @@ func ExtractZip(src, dest string, excludeFiles []string) error {
 	}
 	defer r.Close()
 
+	// 解析排除模式（只需解析一次）
+	excludePatterns, parseErrors := config.ParseExcludePatterns(excludeFiles)
+	if len(parseErrors) > 0 {
+		// 记录解析错误但继续执行
+		for _, parseErr := range parseErrors {
+			fmt.Fprintf(os.Stderr, "警告：排除模式解析失败: %v\n", parseErr)
+		}
+	}
+
 	for _, f := range r.File {
-		if shouldExclude(f.Name, excludeFiles) {
+		// 使用新的匹配函数
+		if config.MatchAny(f.Name, excludePatterns) {
 			continue
 		}
 
@@ -55,17 +65,6 @@ func ExtractZip(src, dest string, excludeFiles []string) error {
 		}
 	}
 	return nil
-}
-
-// shouldExclude 检查文件是否应该被排除
-func shouldExclude(filename string, excludePatterns []string) bool {
-	for _, pattern := range excludePatterns {
-		matched, _ := regexp.MatchString(pattern, filename)
-		if matched {
-			return true
-		}
-	}
-	return false
 }
 
 // GetZipFileList 获取 ZIP 文件中的文件列表

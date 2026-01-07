@@ -90,6 +90,59 @@ func (m *Manager) SaveConfig() error {
 	return m.saveConfig(m.Config)
 }
 
+// AddExcludePattern 添加排除模式
+func (m *Manager) AddExcludePattern(pattern string) error {
+	// 验证模式
+	_, err := ParseExcludePattern(pattern)
+	if err != nil {
+		return fmt.Errorf("无效的排除模式: %w", err)
+	}
+
+	// 检查是否已存在
+	for _, existing := range m.Config.ExcludeFiles {
+		if existing == pattern {
+			return fmt.Errorf("模式已存在")
+		}
+	}
+
+	m.Config.ExcludeFiles = append(m.Config.ExcludeFiles, pattern)
+	return m.SaveConfig()
+}
+
+// RemoveExcludePattern 删除排除模式
+func (m *Manager) RemoveExcludePattern(index int) error {
+	if index < 0 || index >= len(m.Config.ExcludeFiles) {
+		return fmt.Errorf("索引超出范围")
+	}
+
+	m.Config.ExcludeFiles = append(
+		m.Config.ExcludeFiles[:index],
+		m.Config.ExcludeFiles[index+1:]...,
+	)
+	return m.SaveConfig()
+}
+
+// ResetExcludePatterns 重置为默认排除模式
+func (m *Manager) ResetExcludePatterns() error {
+	m.Config.ExcludeFiles = make([]string, len(DefaultExcludePatterns))
+	copy(m.Config.ExcludeFiles, DefaultExcludePatterns)
+	return m.SaveConfig()
+}
+
+// GetExcludePatternDescriptions 获取所有排除模式的描述
+func (m *Manager) GetExcludePatternDescriptions() ([]string, error) {
+	patterns, errs := ParseExcludePatterns(m.Config.ExcludeFiles)
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("部分模式解析失败: %v", errs[0])
+	}
+
+	descriptions := make([]string, len(patterns))
+	for i, p := range patterns {
+		descriptions[i] = p.GetPatternDescription()
+	}
+	return descriptions, nil
+}
+
 // createDefaultConfig 创建默认配置
 func createDefaultConfig() *types.Config {
 	return &types.Config{
@@ -99,7 +152,7 @@ func createDefaultConfig() *types.Config {
 		DictFile:       "",
 		UseMirror:      true,
 		GithubToken:    "",
-		ExcludeFiles:   []string{},
+		ExcludeFiles:   DefaultExcludePatterns, // 使用默认排除模式
 		AutoUpdate:     false,
 		ProxyEnabled:   false,
 		ProxyType:      "http",
@@ -246,17 +299,62 @@ func (m *Manager) GetModelRecordPath() string {
 }
 
 // ValidateExcludeFiles 验证排除文件配置
+// 返回详细的错误信息和建议
 func ValidateExcludeFiles(patterns []string) error {
-	for _, pattern := range patterns {
-		if strings.TrimSpace(pattern) == "" {
+	var errors []string
+
+	for i, pattern := range patterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
 			continue
 		}
-		// 验证正则表达式
-		if _, err := regexp.Compile(pattern); err != nil {
-			return fmt.Errorf("无效的排除模式 %s: %w", pattern, err)
+
+		// 尝试解析模式
+		_, err := ParseExcludePattern(pattern)
+		if err != nil {
+			// 提供友好的错误信息
+			suggestion := getSuggestionForPattern(pattern)
+			errors = append(errors, fmt.Sprintf(
+				"[行 %d] 模式 '%s' 无效: %v\n提示: %s",
+				i+1, pattern, err, suggestion,
+			))
 		}
 	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("排除文件配置验证失败:\n%s", strings.Join(errors, "\n"))
+	}
+
 	return nil
+}
+
+// getSuggestionForPattern 为无效的模式提供修正建议
+func getSuggestionForPattern(pattern string) string {
+	// 常见错误模式和建议
+	suggestions := map[string]string{
+		".*userdb":  "可能想写: *.userdb 或 .*\\.userdb$",
+		"sync/*":    "匹配 sync 目录下所有文件",
+		"*.yaml":    "匹配所有 yaml 文件",
+		"^sync/.*$": "正则表达式：匹配 sync/ 开头的所有文件",
+	}
+
+	// 检查是否有相似的有效模式
+	for valid, desc := range suggestions {
+		if strings.Contains(pattern, strings.TrimSuffix(strings.TrimPrefix(valid, "^"), "$")) {
+			return fmt.Sprintf("您可能想使用: %s (%s)", valid, desc)
+		}
+	}
+
+	// 根据模式内容提供通用建议
+	if strings.Contains(pattern, ".") && !strings.Contains(pattern, "\\") {
+		return "如果要匹配点号(.)，在正则表达式中需要转义: \\."
+	}
+
+	if strings.HasPrefix(pattern, "/") || strings.HasPrefix(pattern, "\\") {
+		return "路径不需要以斜杠开头，例如: sync/*.txt 而不是 /sync/*.txt"
+	}
+
+	return "参考示例: *.userdb (通配符) 或 ^sync/.*$ (正则) 或 user.yaml (精确匹配)"
 }
 
 // SyncToFcitxDir 同步到 fcitx 兼容目录

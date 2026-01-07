@@ -5,13 +5,14 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/progress"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"rime-wanxiang-updater/internal/config"
 	"rime-wanxiang-updater/internal/types"
 	"rime-wanxiang-updater/internal/updater"
 	"rime-wanxiang-updater/internal/version"
+
+	"github.com/charmbracelet/bubbles/progress"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // ViewState 视图状态
@@ -22,8 +23,11 @@ const (
 	ViewMenu
 	ViewUpdating
 	ViewConfig
-	ViewConfigEdit // 新增：配置编辑
-	ViewResult     // 新增：显示更新结果
+	ViewConfigEdit  // 配置编辑
+	ViewResult      // 显示更新结果
+	ViewExcludeList // 排除文件列表
+	ViewExcludeEdit // 编辑排除模式
+	ViewExcludeAdd  // 添加排除模式
 )
 
 // WizardStep 向导步骤
@@ -65,6 +69,13 @@ type Model struct {
 	resultSkipped    bool   // 是否跳过更新（已是最新版本）
 	width            int
 	height           int
+
+	// 排除文件管理相关
+	excludeListChoice   int      // 排除列表光标位置
+	excludeEditInput    string   // 编辑/添加排除模式的输入
+	excludeEditIndex    int      // 正在编辑的模式索引
+	excludeErrorMsg     string   // 排除模式错误消息
+	excludeDescriptions []string // 排除模式的描述
 }
 
 // NewModel 创建新模型
@@ -130,6 +141,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleConfigInput(msg)
 		case ViewConfigEdit:
 			return m.handleConfigEditInput(msg)
+		case ViewExcludeList:
+			return m.handleExcludeListInput(msg)
+		case ViewExcludeEdit:
+			return m.handleExcludeEditInput(msg)
+		case ViewExcludeAdd:
+			return m.handleExcludeAddInput(msg)
 		case ViewResult:
 			return m.handleResultInput(msg)
 		case ViewUpdating:
@@ -367,6 +384,9 @@ func (m Model) handleConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Hook 脚本配置
 		maxChoice += 2 // PreUpdateHook, PostUpdateHook
 
+		// 添加管理排除文件选项
+		maxChoice++ // ExcludeFileManager
+
 		if m.configChoice < maxChoice {
 			m.configChoice++
 		}
@@ -397,8 +417,20 @@ func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 	// Hook 脚本配置
 	configItems = append(configItems, "pre_update_hook", "post_update_hook")
 
+	// 添加管理排除文件
+	configItems = append(configItems, "exclude_file_manager")
+
 	if m.configChoice < len(configItems) {
-		m.editingKey = configItems[m.configChoice]
+		selectedKey := configItems[m.configChoice]
+
+		// 特殊处理：管理排除文件
+		if selectedKey == "exclude_file_manager" {
+			m.InitExcludeView()
+			m.state = ViewExcludeList
+			return m, nil
+		}
+
+		m.editingKey = selectedKey
 
 		// 设置初始编辑值
 		switch m.editingKey {
@@ -815,6 +847,12 @@ func (m Model) View() string {
 		return m.renderConfig()
 	case ViewConfigEdit:
 		return m.renderConfigEdit()
+	case ViewExcludeList:
+		return m.renderExcludeList()
+	case ViewExcludeEdit:
+		return m.renderExcludeEdit()
+	case ViewExcludeAdd:
+		return m.renderExcludeAdd()
 	case ViewResult:
 		return m.renderResult()
 	}
@@ -1152,6 +1190,18 @@ func (m Model) renderConfig() string {
 			editable bool
 			index    int
 		}{"更新后Hook", postHookDisplay, true, editIndex + 1},
+	)
+	editIndex += 2
+
+	// 添加"管理排除文件"选项
+	excludeCount := fmt.Sprintf("(%d个模式)", len(m.cfg.Config.ExcludeFiles))
+	editableConfigs = append(editableConfigs,
+		struct {
+			key      string
+			value    string
+			editable bool
+			index    int
+		}{"📋 管理排除文件", excludeCount, true, editIndex},
 	)
 
 	var configContent strings.Builder
