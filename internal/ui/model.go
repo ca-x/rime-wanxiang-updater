@@ -978,7 +978,7 @@ func (m Model) renderMenu() string {
 
 	// 状态栏
 	statusBar := RenderStatusBar(
-		fmt.Sprintf("v%s", version.GetVersion()),
+		version.GetVersion(),
 		m.cfg.Config.Engine,
 		func() string {
 			if m.cfg.Config.UseMirror {
