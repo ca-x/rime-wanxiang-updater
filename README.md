@@ -55,16 +55,45 @@ rime-wanxiang-updater/
         └── release.yml             # 自动发布工作流
 ```
 
-## 🚀 快速开始
+## 📦 安装
 
-### 下载预编译版本
+### Arch Linux (AUR)
 
-从 [Releases](https://github.com/your-username/rime-wanxiang-updater/releases) 页面下载适合您系统的版本：
+```bash
+# 使用 yay
+yay -S rime-wanxiang-updater
+
+# 使用 paru
+paru -S rime-wanxiang-updater
+
+# 手动安装
+git clone https://aur.archlinux.org/rime-wanxiang-updater.git
+cd rime-wanxiang-updater
+makepkg -si
+```
+
+AUR 包页面：https://aur.archlinux.org/packages/rime-wanxiang-updater
+
+### macOS (Homebrew)
+
+```bash
+# 添加 tap
+brew tap tinypkg/tap
+
+# 安装
+brew install rime-wanxiang-updater
+```
+
+### 其他平台 - 下载预编译版本
+
+从 [Releases](https://github.com/ca-x/rime-wanxiang-updater/releases) 页面下载适合您系统的版本：
 
 - **Windows**: `rime-wanxiang-updater-windows-amd64.exe`
 - **macOS (Apple Silicon)**: `rime-wanxiang-updater-darwin-arm64`
 - **macOS (Intel)**: `rime-wanxiang-updater-darwin-amd64`
 - **Linux**: `rime-wanxiang-updater-linux-amd64`
+
+## 🚀 快速开始
 
 ### 运行程序
 
