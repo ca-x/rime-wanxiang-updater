@@ -260,4 +260,4 @@ GitHub Actions 会自动：
 - [Lipgloss](https://github.com/charmbracelet/lipgloss) - 精美的样式库
 - [Cloudflare Backoff](https://github.com/cloudflare/backoff) - 可靠的重试机制
 - [Rime万象更新工具](https://github.com/rimeinn/rime-wanxiang-update-tools)
-- Rime 万象输入法团队
+- [Rime 万象输入法](https://github.com/amzxyz/rime_wanxiang)
