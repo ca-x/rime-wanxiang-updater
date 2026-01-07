@@ -172,10 +172,12 @@ func (d *DictUpdater) Run(progress types.ProgressFunc) error {
 
 // applyUpdate 应用更新
 func (d *DictUpdater) applyUpdate(temp, target string, progress types.ProgressFunc) error {
-	// 终止进程
-	progress("正在终止相关进程...", 0.85, "", "", 0, 0, 0, false)
-	if err := d.TerminateProcesses(); err != nil {
-		return fmt.Errorf("终止进程失败: %w", err)
+	// 终止进程（组合更新时跳过）
+	if !d.SkipTerminate {
+		progress("正在终止相关进程...", 0.85, "", "", 0, 0, 0, false)
+		if err := d.TerminateProcesses(); err != nil {
+			return fmt.Errorf("终止进程失败: %w", err)
+		}
 	}
 
 	// 确保词库目录存在

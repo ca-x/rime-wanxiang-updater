@@ -89,50 +89,95 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 		progress = func(string, string, float64, string, string, int64, int64, float64, bool) {}
 	}
 
-	// 更新方案 - 使用 GetStatus 检查是否需要更新
+	// 收集需要更新的项
+	needsSchemeUpdate := false
+	needsDictUpdate := false
+	needsModelUpdate := false
+
 	if c.SchemeUpdater.UpdateInfo != nil {
 		if schemeStatus, err := c.SchemeUpdater.GetStatus(); err == nil && schemeStatus.NeedsUpdate {
-			progress("方案", "正在更新方案...", 0.0, "", "", 0, 0, 0, false)
-			progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
-				progress("方案", message, percent*0.33, source, fileName, downloaded, total, speed, downloadMode) // 方案占 33%
-			}
-			if err := c.SchemeUpdater.Run(progressFunc); err != nil {
-				errors = append(errors, fmt.Sprintf("方案更新失败: %v", err))
-			}
+			needsSchemeUpdate = true
 		}
 	}
 
-	// 更新词库 - 使用 GetStatus 检查是否需要更新
 	if c.DictUpdater.UpdateInfo != nil {
 		if dictStatus, err := c.DictUpdater.GetStatus(); err == nil && dictStatus.NeedsUpdate {
-			progress("词库", "正在更新词库...", 0.33, "", "", 0, 0, 0, false)
-			progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
-				progress("词库", message, 0.33+percent*0.33, source, fileName, downloaded, total, speed, downloadMode) // 词库占 33%
-			}
-			if err := c.DictUpdater.Run(progressFunc); err != nil {
-				errors = append(errors, fmt.Sprintf("词库更新失败: %v", err))
-			}
+			needsDictUpdate = true
 		}
 	}
 
-	// 更新模型 - 保持原有逻辑
 	if c.ModelUpdater.UpdateInfo != nil &&
 		c.ModelUpdater.HasUpdate(c.ModelUpdater.UpdateInfo, c.Config.GetModelRecordPath()) {
-		progress("模型", "正在更新模型...", 0.66, "", "", 0, 0, 0, false)
+		needsModelUpdate = true
+	}
+
+	// 如果没有任何更新，直接返回
+	if !needsSchemeUpdate && !needsDictUpdate && !needsModelUpdate {
+		progress("完成", "已是最新版本", 1.0, "", "", 0, 0, 0, false)
+		return nil
+	}
+
+	// 统一在开始前终止进程（只终止一次）
+	progress("准备", "正在终止相关进程...", 0.0, "", "", 0, 0, 0, false)
+	if err := c.SchemeUpdater.TerminateProcesses(); err != nil {
+		return fmt.Errorf("终止进程失败: %w", err)
+	}
+
+	// 标记为组合更新模式，让子更新器跳过终止进程步骤
+	c.SchemeUpdater.SkipTerminate = true
+	c.DictUpdater.SkipTerminate = true
+	c.ModelUpdater.SkipTerminate = true
+
+	defer func() {
+		// 恢复默认设置
+		c.SchemeUpdater.SkipTerminate = false
+		c.DictUpdater.SkipTerminate = false
+		c.ModelUpdater.SkipTerminate = false
+	}()
+
+	// 更新方案
+	if needsSchemeUpdate {
+		progress("方案", "正在更新方案...", 0.05, "", "", 0, 0, 0, false)
 		progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
-			progress("模型", message, 0.66+percent*0.34, source, fileName, downloaded, total, speed, downloadMode) // 模型占 34%
+			progress("方案", message, 0.05+percent*0.30, source, fileName, downloaded, total, speed, downloadMode) // 方案占 30%
+		}
+		if err := c.SchemeUpdater.Run(progressFunc); err != nil {
+			errors = append(errors, fmt.Sprintf("方案更新失败: %v", err))
+		}
+	}
+
+	// 更新词库
+	if needsDictUpdate {
+		progress("词库", "正在更新词库...", 0.35, "", "", 0, 0, 0, false)
+		progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
+			progress("词库", message, 0.35+percent*0.30, source, fileName, downloaded, total, speed, downloadMode) // 词库占 30%
+		}
+		if err := c.DictUpdater.Run(progressFunc); err != nil {
+			errors = append(errors, fmt.Sprintf("词库更新失败: %v", err))
+		}
+	}
+
+	// 更新模型
+	if needsModelUpdate {
+		progress("模型", "正在更新模型...", 0.65, "", "", 0, 0, 0, false)
+		progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
+			progress("模型", message, 0.65+percent*0.25, source, fileName, downloaded, total, speed, downloadMode) // 模型占 25%
 		}
 		if err := c.ModelUpdater.Run(progressFunc); err != nil {
 			errors = append(errors, fmt.Sprintf("模型更新失败: %v", err))
 		}
 	}
 
-	// 如果没有错误，执行部署
+	// 如果没有错误，执行部署（会重启服务）
 	if len(errors) == 0 {
-		progress("部署", "正在部署...", 0.95, "", "", 0, 0, 0, false)
+		progress("部署", "正在部署...", 0.90, "", "", 0, 0, 0, false)
 		if err := c.SchemeUpdater.Deploy(); err != nil {
 			errors = append(errors, fmt.Sprintf("部署失败: %v", err))
 		}
+	} else {
+		// 即使有错误，也尝试重启服务，让用户能继续使用输入法
+		progress("恢复", "尝试重启服务...", 0.90, "", "", 0, 0, 0, false)
+		_ = c.SchemeUpdater.Deploy() // 忽略错误
 	}
 
 	if len(errors) > 0 {

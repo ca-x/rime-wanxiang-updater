@@ -176,10 +176,12 @@ func (m *ModelUpdater) Run(progress types.ProgressFunc) error {
 
 // applyUpdate 应用更新
 func (m *ModelUpdater) applyUpdate(temp, target string, progress types.ProgressFunc) error {
-	// 终止进程
-	progress("正在终止相关进程...", 0.85, "", "", 0, 0, 0, false)
-	if err := m.TerminateProcesses(); err != nil {
-		return fmt.Errorf("终止进程失败: %w", err)
+	// 终止进程（组合更新时跳过）
+	if !m.SkipTerminate {
+		progress("正在终止相关进程...", 0.85, "", "", 0, 0, 0, false)
+		if err := m.TerminateProcesses(); err != nil {
+			return fmt.Errorf("终止进程失败: %w", err)
+		}
 	}
 
 	// 覆盖目标文件

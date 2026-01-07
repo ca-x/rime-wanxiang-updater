@@ -18,9 +18,10 @@ import (
 
 // BaseUpdater 更新器基类
 type BaseUpdater struct {
-	Config    *config.Manager
-	APIClient *api.Client
-	Deployer  deployer.Deployer
+	Config        *config.Manager
+	APIClient     *api.Client
+	Deployer      deployer.Deployer
+	SkipTerminate bool // 是否跳过终止进程步骤（用于组合更新）
 }
 
 // NewBaseUpdater 创建基础更新器

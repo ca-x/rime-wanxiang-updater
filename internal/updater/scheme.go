@@ -179,10 +179,12 @@ func (s *SchemeUpdater) Run(progress types.ProgressFunc) error {
 
 // applyUpdate 应用更新
 func (s *SchemeUpdater) applyUpdate(temp, target string, progress types.ProgressFunc) error {
-	// 终止进程
-	progress("正在终止相关进程...", 0.85, "", "", 0, 0, 0, false)
-	if err := s.TerminateProcesses(); err != nil {
-		return fmt.Errorf("终止进程失败: %w", err)
+	// 终止进程（组合更新时跳过）
+	if !s.SkipTerminate {
+		progress("正在终止相关进程...", 0.85, "", "", 0, 0, 0, false)
+		if err := s.TerminateProcesses(); err != nil {
+			return fmt.Errorf("终止进程失败: %w", err)
+		}
 	}
 
 	// 解压文件
