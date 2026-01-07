@@ -221,7 +221,8 @@ func (d *DictUpdater) applyUpdate(temp, target string, progress types.ProgressFu
 
 	// 同步到 fcitx 目录（如果启用）
 	if d.Config.Config.FcitxCompat {
-		if err := d.Config.SyncToFcitxDir(); err != nil {
+		_, _, err := d.Config.SyncToFcitxDir()
+		if err != nil {
 			// 只记录错误，不返回失败
 			progress(fmt.Sprintf("fcitx 同步失败: %v", err), 1.0, "", "", 0, 0, 0, false)
 		}

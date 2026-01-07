@@ -29,21 +29,23 @@ var SchemeMap = map[string]string{
 
 // Config 配置结构
 type Config struct {
-	Engine         string   `json:"engine"`
-	SchemeType     string   `json:"scheme_type"`
-	SchemeFile     string   `json:"scheme_file"`
-	DictFile       string   `json:"dict_file"`
-	UseMirror      bool     `json:"use_mirror"`
-	GithubToken    string   `json:"github_token"`
-	ExcludeFiles   []string `json:"exclude_files"`
-	AutoUpdate     bool     `json:"auto_update"`
-	ProxyEnabled   bool     `json:"proxy_enabled"`
-	ProxyType      string   `json:"proxy_type"`
-	ProxyAddress   string   `json:"proxy_address"`
-	FcitxCompat    bool     `json:"fcitx_compat"`     // Linux 专用：兼容 ~/.config/fcitx/rime/
-	FcitxUseLink   bool     `json:"fcitx_use_link"`   // Linux 专用：使用软链接（true）还是复制（false）
-	PreUpdateHook  string   `json:"pre_update_hook"`  // 更新前执行的脚本路径
-	PostUpdateHook string   `json:"post_update_hook"` // 更新后执行的脚本路径
+	Engine              string   `json:"engine"`
+	SchemeType          string   `json:"scheme_type"`
+	SchemeFile          string   `json:"scheme_file"`
+	DictFile            string   `json:"dict_file"`
+	UseMirror           bool     `json:"use_mirror"`
+	GithubToken         string   `json:"github_token"`
+	ExcludeFiles        []string `json:"exclude_files"`
+	AutoUpdate          bool     `json:"auto_update"`
+	ProxyEnabled        bool     `json:"proxy_enabled"`
+	ProxyType           string   `json:"proxy_type"`
+	ProxyAddress        string   `json:"proxy_address"`
+	FcitxCompat         bool     `json:"fcitx_compat"`          // Linux 专用：兼容 ~/.config/fcitx/rime/
+	FcitxUseLink        bool     `json:"fcitx_use_link"`        // Linux 专用：使用软链接（true）还是复制（false）
+	FcitxConflictAction string   `json:"fcitx_conflict_action"` // Linux 专用：目录冲突处理方式 "delete" 或 "backup"，空表示未设置
+	FcitxConflictPrompt bool     `json:"fcitx_conflict_prompt"` // Linux 专用：是否每次都提示（true）还是使用记忆的偏好（false）
+	PreUpdateHook       string   `json:"pre_update_hook"`       // 更新前执行的脚本路径
+	PostUpdateHook      string   `json:"post_update_hook"`      // 更新后执行的脚本路径
 }
 
 // UpdateInfo 更新信息

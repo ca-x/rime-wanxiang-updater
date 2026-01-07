@@ -193,6 +193,40 @@ var (
 
 	// 渐变色调色板（从粉色到黄色）
 	titleGradient = gamut.Blends(lipgloss.Color("#F25D94"), lipgloss.Color("#EDFF82"), 30)
+
+	// 对话框样式
+	dialogBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(neonMagenta).
+			Padding(1, 2).
+			BorderTop(true).
+			BorderLeft(true).
+			BorderRight(true).
+			BorderBottom(true)
+
+	dialogButtonStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.AdaptiveColor{Light: "#343433", Dark: "#FFFDF5"}).
+				Background(lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#888B7E"}).
+				Padding(0, 3).
+				MarginTop(1).
+				MarginRight(2)
+
+	dialogActiveButtonStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#FFF7DB"}).
+				Background(neonMagenta).
+				Padding(0, 3).
+				MarginTop(1).
+				MarginRight(2).
+				Bold(true)
+
+	dialogCheckboxStyle = lipgloss.NewStyle().
+				Foreground(neonCyan).
+				MarginTop(1)
+
+	dialogCheckboxCheckedStyle = lipgloss.NewStyle().
+					Foreground(neonGreen).
+					MarginTop(1).
+					Bold(true)
 )
 
 // RenderGradientTitle 渲染渐变色标题（无边框）

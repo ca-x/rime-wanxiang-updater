@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -23,11 +25,12 @@ const (
 	ViewMenu
 	ViewUpdating
 	ViewConfig
-	ViewConfigEdit  // 配置编辑
-	ViewResult      // 显示更新结果
-	ViewExcludeList // 排除文件列表
-	ViewExcludeEdit // 编辑排除模式
-	ViewExcludeAdd  // 添加排除模式
+	ViewConfigEdit    // 配置编辑
+	ViewResult        // 显示更新结果
+	ViewExcludeList   // 排除文件列表
+	ViewExcludeEdit   // 编辑排除模式
+	ViewExcludeAdd    // 添加排除模式
+	ViewFcitxConflict // Fcitx 目录冲突对话框
 )
 
 // WizardStep 向导步骤
@@ -76,6 +79,11 @@ type Model struct {
 	excludeEditIndex    int      // 正在编辑的模式索引
 	excludeErrorMsg     string   // 排除模式错误消息
 	excludeDescriptions []string // 排除模式的描述
+
+	// Fcitx 冲突处理相关
+	fcitxConflictChoice   int    // 对话框按钮选择 (0=删除, 1=备份, 2=不再提示复选框)
+	fcitxConflictNoPrompt bool   // 是否选中"不再提示"
+	fcitxConflictCallback func() // 冲突解决后的回调函数
 }
 
 // NewModel 创建新模型
@@ -147,6 +155,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleExcludeEditInput(msg)
 		case ViewExcludeAdd:
 			return m.handleExcludeAddInput(msg)
+		case ViewFcitxConflict:
+			return m.handleFcitxConflictInput(msg)
 		case ViewResult:
 			return m.handleResultInput(msg)
 		case ViewUpdating:
@@ -545,9 +555,28 @@ func (m Model) saveConfigEdit() (tea.Model, tea.Cmd) {
 		// 处理 fcitx 兼容性的启用/禁用
 		if newValue != oldValue {
 			if newValue {
-				// 启用时立即同步
-				if err := m.cfg.SyncToFcitxDir(); err != nil {
+				// 启用时检查是否需要同步
+				needsPrompt, conflictExists, err := m.cfg.SyncToFcitxDir()
+				if err != nil {
 					m.err = err
+				} else if needsPrompt && conflictExists {
+					// 需要用户确认，显示对话框
+					m.fcitxConflictChoice = 0
+					m.fcitxConflictNoPrompt = false
+					m.fcitxConflictCallback = func() {
+						// 对话框确认后的回调
+						if err := m.cfg.ResolveFcitxConflict(); err != nil {
+							m.err = err
+						}
+					}
+					// 先保存配置
+					if err := m.cfg.SaveConfig(); err != nil {
+						m.err = err
+					}
+					m.state = ViewFcitxConflict
+					m.editingKey = ""
+					m.editingValue = ""
+					return m, nil
 				}
 			} else {
 				// 禁用时：fcitx_use_link 选项会消失
@@ -559,8 +588,27 @@ func (m Model) saveConfigEdit() (tea.Model, tea.Cmd) {
 		m.cfg.Config.FcitxUseLink = m.editingValue == "true"
 		// 如果已启用 fcitx 兼容，重新同步以应用链接方式的改变
 		if m.cfg.Config.FcitxCompat {
-			if err := m.cfg.SyncToFcitxDir(); err != nil {
+			needsPrompt, conflictExists, err := m.cfg.SyncToFcitxDir()
+			if err != nil {
 				m.err = err
+			} else if needsPrompt && conflictExists {
+				// 需要用户确认，显示对话框
+				m.fcitxConflictChoice = 0
+				m.fcitxConflictNoPrompt = false
+				m.fcitxConflictCallback = func() {
+					// 对话框确认后的回调
+					if err := m.cfg.ResolveFcitxConflict(); err != nil {
+						m.err = err
+					}
+				}
+				// 先保存配置
+				if err := m.cfg.SaveConfig(); err != nil {
+					m.err = err
+				}
+				m.state = ViewFcitxConflict
+				m.editingKey = ""
+				m.editingValue = ""
+				return m, nil
 			}
 		}
 	case "proxy_type":
@@ -853,6 +901,8 @@ func (m Model) View() string {
 		return m.renderExcludeEdit()
 	case ViewExcludeAdd:
 		return m.renderExcludeAdd()
+	case ViewFcitxConflict:
+		return m.renderFcitxConflict()
 	case ViewResult:
 		return m.renderResult()
 	}
@@ -1420,4 +1470,142 @@ func (m Model) renderResult() string {
 	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(hint))
 
 	return containerStyle.Render(b.String())
+}
+
+// renderFcitxConflict 渲染 Fcitx 目录冲突对话框
+func (m Model) renderFcitxConflict() string {
+	var b strings.Builder
+
+	// ASCII Logo
+	logo := logoStyle.Render(asciiLogo)
+	b.WriteString(logo + "\n")
+
+	// 启动序列状态
+	bootSeq := RenderBootSequence(version.GetVersion())
+	b.WriteString(bootSeq + "\n")
+
+	// 扫描线效果
+	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
+
+	// 对话框标题
+	title := RenderGradientTitle("⚠ Fcitx 目录冲突 ⚠")
+	b.WriteString(title + "\n\n")
+
+	// 对话框内容
+	homeDir, _ := os.UserHomeDir()
+	targetDir := filepath.Join(homeDir, ".config", "fcitx", "rime")
+
+	question := warningStyle.Render(fmt.Sprintf("检测到目录已存在: %s", targetDir))
+	question += "\n\n" + configValueStyle.Render("请选择如何处理:")
+
+	// 按钮
+	deleteButton := dialogButtonStyle.Render("[1] 直接删除")
+	backupButton := dialogButtonStyle.Render("[2] 备份后删除")
+
+	if m.fcitxConflictChoice == 0 {
+		deleteButton = dialogActiveButtonStyle.Render("► [1] 直接删除")
+	} else if m.fcitxConflictChoice == 1 {
+		backupButton = dialogActiveButtonStyle.Render("► [2] 备份后删除")
+	}
+
+	buttons := lipgloss.JoinHorizontal(lipgloss.Top, deleteButton, backupButton)
+
+	// 复选框
+	checkbox := "[ ] 不再提示，记住我的选择"
+	if m.fcitxConflictNoPrompt {
+		checkbox = "[✓] 不再提示，记住我的选择"
+	}
+
+	checkboxRendered := dialogCheckboxStyle.Render(checkbox)
+	if m.fcitxConflictNoPrompt {
+		checkboxRendered = dialogCheckboxCheckedStyle.Render(checkbox)
+	}
+	if m.fcitxConflictChoice == 2 {
+		checkboxRendered = dialogActiveButtonStyle.Render("► " + checkbox)
+	}
+
+	ui := lipgloss.JoinVertical(lipgloss.Left, question, buttons, checkboxRendered)
+
+	dialog := lipgloss.Place(65, 12,
+		lipgloss.Center, lipgloss.Center,
+		dialogBoxStyle.Render(ui),
+	)
+
+	b.WriteString(dialog + "\n\n")
+
+	// 网格线
+	b.WriteString(gridStyle.Render(gridLine) + "\n\n")
+
+	// 提示
+	hint := hintStyle.Render("[>] Navigate: 1-2 or Arrow Keys | [Space/Enter] Toggle/Confirm | [ESC] Cancel")
+	b.WriteString(hint)
+
+	return containerStyle.Render(b.String())
+}
+
+// handleFcitxConflictInput 处理 Fcitx 冲突对话框输入
+func (m Model) handleFcitxConflictInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		// 取消，返回配置页面
+		m.state = ViewConfig
+		return m, nil
+	case "up", "left", "k":
+		if m.fcitxConflictChoice > 0 {
+			m.fcitxConflictChoice--
+		}
+	case "down", "right", "j":
+		if m.fcitxConflictChoice < 2 {
+			m.fcitxConflictChoice++
+		}
+	case "1":
+		m.fcitxConflictChoice = 0
+	case "2":
+		m.fcitxConflictChoice = 1
+	case " ":
+		// 空格键切换复选框
+		if m.fcitxConflictChoice == 2 {
+			m.fcitxConflictNoPrompt = !m.fcitxConflictNoPrompt
+		}
+	case "enter":
+		// 确认选择
+		if m.fcitxConflictChoice == 2 {
+			// 在复选框上按回车，切换状态
+			m.fcitxConflictNoPrompt = !m.fcitxConflictNoPrompt
+		} else {
+			// 在按钮上按回车，应用选择
+			return m.applyFcitxConflictChoice()
+		}
+	}
+	return m, nil
+}
+
+// applyFcitxConflictChoice 应用 Fcitx 冲突选择
+func (m Model) applyFcitxConflictChoice() (tea.Model, tea.Cmd) {
+	// 保存用户选择
+	if m.fcitxConflictChoice == 0 {
+		m.cfg.Config.FcitxConflictAction = "delete"
+	} else {
+		m.cfg.Config.FcitxConflictAction = "backup"
+	}
+
+	// 保存是否记住选择
+	if m.fcitxConflictNoPrompt {
+		m.cfg.Config.FcitxConflictPrompt = false
+		// 保存配置到文件
+		if err := m.cfg.SaveConfig(); err != nil {
+			m.err = err
+		}
+	}
+
+	// 执行回调（实际处理冲突）
+	if m.fcitxConflictCallback != nil {
+		m.fcitxConflictCallback()
+	}
+
+	// 返回配置页面
+	m.state = ViewConfig
+	return m, nil
 }

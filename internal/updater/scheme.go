@@ -224,7 +224,8 @@ func (s *SchemeUpdater) applyUpdate(temp, target string, progress types.Progress
 
 	// 同步到 fcitx 目录（如果启用）
 	if s.Config.Config.FcitxCompat {
-		if err := s.Config.SyncToFcitxDir(); err != nil {
+		_, _, err := s.Config.SyncToFcitxDir()
+		if err != nil {
 			// 只记录错误，不返回失败
 			progress(fmt.Sprintf("fcitx 同步失败: %v", err), 1.0, "", "", 0, 0, 0, false)
 		}

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 
 	"rime-wanxiang-updater/internal/api"
 	"rime-wanxiang-updater/internal/types"
@@ -146,21 +147,23 @@ func (m *Manager) GetExcludePatternDescriptions() ([]string, error) {
 // createDefaultConfig 创建默认配置
 func createDefaultConfig() *types.Config {
 	return &types.Config{
-		Engine:         detectEngine(),
-		SchemeType:     "",
-		SchemeFile:     "",
-		DictFile:       "",
-		UseMirror:      true,
-		GithubToken:    "",
-		ExcludeFiles:   DefaultExcludePatterns, // 使用默认排除模式
-		AutoUpdate:     false,
-		ProxyEnabled:   false,
-		ProxyType:      "http",
-		ProxyAddress:   "127.0.0.1:7890",
-		FcitxCompat:    false,
-		FcitxUseLink:   true, // 默认使用软链接
-		PreUpdateHook:  "",
-		PostUpdateHook: "",
+		Engine:              detectEngine(),
+		SchemeType:          "",
+		SchemeFile:          "",
+		DictFile:            "",
+		UseMirror:           true,
+		GithubToken:         "",
+		ExcludeFiles:        DefaultExcludePatterns, // 使用默认排除模式
+		AutoUpdate:          false,
+		ProxyEnabled:        false,
+		ProxyType:           "http",
+		ProxyAddress:        "127.0.0.1:7890",
+		FcitxCompat:         false,
+		FcitxUseLink:        true, // 默认使用软链接
+		FcitxConflictAction: "",   // 默认未设置，首次会询问
+		FcitxConflictPrompt: true, // 默认每次都提示
+		PreUpdateHook:       "",
+		PostUpdateHook:      "",
 	}
 }
 
@@ -359,21 +362,22 @@ func getSuggestionForPattern(pattern string) string {
 
 // SyncToFcitxDir 同步到 fcitx 兼容目录
 // 仅在 Linux 平台且启用 FcitxCompat 时生效
-func (m *Manager) SyncToFcitxDir() error {
+// 返回 needsPrompt 表示需要用户确认，conflictExists 表示目录已存在
+func (m *Manager) SyncToFcitxDir() (needsPrompt bool, conflictExists bool, err error) {
 	// 仅 Linux 平台支持
 	if runtime.GOOS != "linux" {
-		return nil
+		return false, false, nil
 	}
 
 	// 未启用 fcitx 兼容
 	if !m.Config.FcitxCompat {
-		return nil
+		return false, false, nil
 	}
 
 	// 获取源目录（fcitx5 配置目录）
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("获取用户目录失败: %w", err)
+		return false, false, fmt.Errorf("获取用户目录失败: %w", err)
 	}
 
 	sourceDir := m.RimeDir
@@ -381,18 +385,39 @@ func (m *Manager) SyncToFcitxDir() error {
 
 	// 检查源目录是否存在
 	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
-		return fmt.Errorf("源目录不存在: %s", sourceDir)
+		return false, false, fmt.Errorf("源目录不存在: %s", sourceDir)
 	}
 
 	// 创建目标父目录
 	if err := os.MkdirAll(filepath.Dir(targetDir), 0755); err != nil {
-		return fmt.Errorf("创建目标父目录失败: %w", err)
+		return false, false, fmt.Errorf("创建目标父目录失败: %w", err)
 	}
 
-	// 如果目标已存在，先删除
-	if _, err := os.Lstat(targetDir); err == nil {
-		if err := os.RemoveAll(targetDir); err != nil {
-			return fmt.Errorf("删除旧目标失败: %w", err)
+	// 检查目标是否存在
+	targetInfo, err := os.Lstat(targetDir)
+	if err == nil {
+		// 目标存在，检查是否是指向正确位置的软链接
+		if targetInfo.Mode()&os.ModeSymlink != 0 {
+			// 是软链接，检查指向
+			link, err := os.Readlink(targetDir)
+			if err == nil && link == sourceDir {
+				// 已经是正确的软链接，无需操作
+				return false, false, nil
+			}
+		}
+
+		// 目标存在但不是正确的软链接，需要处理冲突
+		conflictExists = true
+
+		// 检查是否需要提示用户
+		if m.Config.FcitxConflictPrompt || m.Config.FcitxConflictAction == "" {
+			// 需要用户确认
+			return true, true, nil
+		}
+
+		// 使用已保存的偏好处理冲突
+		if err := m.handleFcitxConflict(targetDir); err != nil {
+			return false, true, err
 		}
 	}
 
@@ -400,16 +425,55 @@ func (m *Manager) SyncToFcitxDir() error {
 	if m.Config.FcitxUseLink {
 		// 创建软链接
 		if err := os.Symlink(sourceDir, targetDir); err != nil {
-			return fmt.Errorf("创建软链接失败: %w", err)
+			return false, false, fmt.Errorf("创建软链接失败: %w", err)
 		}
 	} else {
 		// 复制目录
 		if err := copyDir(sourceDir, targetDir); err != nil {
-			return fmt.Errorf("复制目录失败: %w", err)
+			return false, false, fmt.Errorf("复制目录失败: %w", err)
 		}
 	}
 
+	return false, false, nil
+}
+
+// handleFcitxConflict 处理 fcitx 目录冲突（使用已保存的偏好）
+func (m *Manager) handleFcitxConflict(targetDir string) error {
+	if m.Config.FcitxConflictAction == "backup" {
+		// 备份现有目录，使用时间戳格式：rime.backup.20060102_150405
+		timestamp := time.Now().Format("20060102_150405")
+		backupName := "rime.backup." + timestamp
+		backupDir := filepath.Join(filepath.Dir(targetDir), backupName)
+
+		if err := os.Rename(targetDir, backupDir); err != nil {
+			return fmt.Errorf("备份目录失败: %w", err)
+		}
+	} else {
+		// 直接删除
+		if err := os.RemoveAll(targetDir); err != nil {
+			return fmt.Errorf("删除旧目标失败: %w", err)
+		}
+	}
 	return nil
+}
+
+// ResolveFcitxConflict 解决 fcitx 目录冲突（在用户确认后调用）
+func (m *Manager) ResolveFcitxConflict() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("获取用户目录失败: %w", err)
+	}
+
+	targetDir := filepath.Join(homeDir, ".config", "fcitx", "rime")
+
+	// 处理冲突
+	if err := m.handleFcitxConflict(targetDir); err != nil {
+		return err
+	}
+
+	// 执行同步
+	_, _, err = m.SyncToFcitxDir()
+	return err
 }
 
 // copyDir 递归复制目录

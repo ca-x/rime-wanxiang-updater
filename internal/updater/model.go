@@ -208,7 +208,8 @@ func (m *ModelUpdater) applyUpdate(temp, target string, progress types.ProgressF
 
 	// 同步到 fcitx 目录（如果启用）
 	if m.Config.Config.FcitxCompat {
-		if err := m.Config.SyncToFcitxDir(); err != nil {
+		_, _, err := m.Config.SyncToFcitxDir()
+		if err != nil {
 			// 只记录错误，不返回失败
 			progress(fmt.Sprintf("fcitx 同步失败: %v", err), 1.0, "", "", 0, 0, 0, false)
 		}
