@@ -342,14 +342,19 @@ func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "5":
 		m.state = ViewConfig
 		return m, nil
-	case "6", "q", "ctrl+c":
+	case "6":
+		// 进入设置向导
+		m.state = ViewWizard
+		m.wizardStep = WizardSchemeType
+		return m, nil
+	case "7", "q", "ctrl+c":
 		return m, tea.Quit
 	case "up", "k":
 		if m.menuChoice > 0 {
 			m.menuChoice--
 		}
 	case "down", "j":
-		if m.menuChoice < 5 {
+		if m.menuChoice < 6 {
 			m.menuChoice++
 		}
 	case "enter":
@@ -374,6 +379,11 @@ func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.state = ViewConfig
 			return m, nil
 		case 5:
+			// 进入设置向导
+			m.state = ViewWizard
+			m.wizardStep = WizardSchemeType
+			return m, nil
+		case 6:
 			return m, tea.Quit
 		}
 	}
@@ -1081,6 +1091,7 @@ func (m Model) renderMenu() string {
 		{"▣", "方案更新"},
 		{"▣", "模型更新"},
 		{"▣", "查看配置"},
+		{"▣", "设置向导"},
 		{"▣", "退出程序"},
 	}
 
@@ -1097,7 +1108,7 @@ func (m Model) renderMenu() string {
 	b.WriteString("\n" + gridStyle.Render(gridLine) + "\n")
 
 	// 提示
-	hint := hintStyle.Render("[>] Input: 1-6 | Navigate: J/K or Arrow Keys | [Q] Quit")
+	hint := hintStyle.Render("[>] Input: 1-7 | Navigate: J/K or Arrow Keys | [Q] Quit")
 	b.WriteString(hint + "\n\n")
 
 	// 状态栏
