@@ -14,11 +14,13 @@ import (
 )
 
 var (
-	// 赛博朋克色彩
-	neonCyan    = lipgloss.Color("#00FFFF")
-	neonMagenta = lipgloss.Color("#FF00FF")
-	neonGreen   = lipgloss.Color("#00FF41")
-	darkBg      = lipgloss.Color("#0A0E27")
+	// 赛博朋克色彩 - 自适应深色/浅色背景
+	neonCyan    = lipgloss.AdaptiveColor{Light: "#008B8B", Dark: "#00FFFF"}
+	neonMagenta = lipgloss.AdaptiveColor{Light: "#8B008B", Dark: "#FF00FF"}
+	neonGreen   = lipgloss.AdaptiveColor{Light: "#008000", Dark: "#00FF41"}
+	neonPurple  = lipgloss.AdaptiveColor{Light: "#6A0DAD", Dark: "#B026FF"}
+	glitchRed   = lipgloss.AdaptiveColor{Light: "#DC143C", Dark: "#FF0040"}
+	darkBg      = lipgloss.AdaptiveColor{Light: "#F0F0F0", Dark: "#0A0E27"}
 
 	bootLogo = `
 ╔═══════════════════════════════════════════════════════════════╗
@@ -41,6 +43,7 @@ func printBootSequence() {
 		Bold(true)
 
 	fmt.Println(logoStyle.Render(bootLogo))
+	fmt.Println() // Logo 后添加空行
 
 	// 版本信息
 	versionStyle := lipgloss.NewStyle().
@@ -49,6 +52,12 @@ func printBootSequence() {
 
 	versionText := fmt.Sprintf("              >>> UPDATER SYSTEM %s <<<", version.GetVersion())
 	fmt.Println(versionStyle.Render(versionText))
+
+	// 添加装饰性分隔线
+	dividerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "#C0C0C0", Dark: "#2A2F4A"})
+	divider := "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+	fmt.Println(dividerStyle.Render(divider))
 	fmt.Println()
 
 	// 启动序列
@@ -70,11 +79,15 @@ func printBootSequence() {
 		time.Sleep(150 * time.Millisecond)
 	}
 
+	// 添加装饰性分隔线
+	fmt.Println()
+	fmt.Println(dividerStyle.Render(divider))
+
 	fmt.Println()
 
 	// 启动提示
 	hintStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#B026FF")).
+		Foreground(neonPurple).
 		Italic(true)
 
 	fmt.Println(hintStyle.Render("  ⚡ LAUNCHING MAIN INTERFACE..."))
@@ -84,6 +97,9 @@ func printBootSequence() {
 }
 
 func main() {
+	// 初始化主题（自动检测终端背景色）
+	ui.InitTheme()
+
 	// 显示启动序列
 	printBootSequence()
 
@@ -91,7 +107,7 @@ func main() {
 	cfg, err := config.NewManager()
 	if err != nil {
 		errorStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF0040")).
+			Foreground(glitchRed).
 			Background(darkBg).
 			Bold(true).
 			Padding(0, 1)
@@ -106,7 +122,7 @@ func main() {
 	// 运行程序
 	if _, err := p.Run(); err != nil {
 		errorStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF0040")).
+			Foreground(glitchRed).
 			Background(darkBg).
 			Bold(true).
 			Padding(0, 1)

@@ -323,3 +323,84 @@ func RenderBootSequence(appVersion string) string {
 
 	return b.String()
 }
+
+// RenderHeader 渲染简洁的页面标题（用于主界面，不显示启动序列）
+func RenderHeader(appVersion string) string {
+	// 只显示简洁的版本信息
+	title := versionStyle.Render(">>> RIME-WANXIANG UPDATER " + appVersion + " <<<")
+	return lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(title) + "\n"
+}
+
+// RenderCheckList 渲染带 checkmark 的列表
+// title: 列表标题(英文)
+// items: 列表项(中文组件名)
+// isUpdated: true=已更新(绿色), false=已是最新(灰色)
+// versions: 组件版本信息
+func RenderCheckList(title string, items []string, isUpdated bool, versions map[string]string) string {
+	var b strings.Builder
+
+	// 标题样式
+	var titleStyle lipgloss.Style
+	var checkmark string
+	var itemStyle lipgloss.Style
+
+	if isUpdated {
+		// 已更新：绿色
+		titleStyle = lipgloss.NewStyle().Foreground(neonGreen).Bold(true)
+		checkmark = "✓"
+		itemStyle = configValueStyle
+	} else {
+		// 已是最新：灰色
+		titleStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#808080", Dark: "#808080"}).Bold(true)
+		checkmark = "✓"
+		itemStyle = hintStyle
+	}
+
+	// 渲染标题
+	b.WriteString(titleStyle.Render(title + ":") + "\n")
+
+	// 将中文组件名映射到英文
+	componentMap := map[string]string{
+		"方案": "Scheme",
+		"词库": "Dictionary",
+		"模型": "Model",
+	}
+
+	// 使用 list 渲染列表项
+	listItems := make([]any, len(items))
+	for i, item := range items {
+		englishName, ok := componentMap[item]
+		var itemText string
+		if ok {
+			// 中英文都显示
+			itemText = englishName + " | " + item
+		} else {
+			// 只有中文时直接使用
+			itemText = item
+		}
+
+		// 如果有版本信息，追加版本号
+		if versions != nil {
+			if version, ok := versions[item]; ok && version != "" {
+				itemText += " (" + version + ")"
+			}
+		}
+
+		listItems[i] = itemText
+	}
+
+	checkList := list.New(listItems...).
+		Enumerator(func(items list.Items, index int) string {
+			return titleStyle.Render(checkmark)
+		}).
+		EnumeratorStyleFunc(func(items list.Items, index int) lipgloss.Style {
+			return lipgloss.NewStyle().PaddingRight(1).MarginLeft(1)
+		}).
+		ItemStyleFunc(func(items list.Items, index int) lipgloss.Style {
+			return itemStyle
+		})
+
+	b.WriteString(checkList.String())
+
+	return b.String()
+}

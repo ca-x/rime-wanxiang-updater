@@ -43,14 +43,27 @@ func (m *ModelUpdater) GetStatus() (*types.UpdateStatus, error) {
 	}
 
 	if localRecord != nil {
-		status.LocalVersion = localRecord.Tag
+		// 对于模型文件，根据 Tag 内容决定显示格式
+		// CNB 镜像使用日期格式（如 "2025-01-08"）
+		// GitHub 使用 Tag 名称（如 "LTS"）
+		if localRecord.Tag != "" && localRecord.Tag != "model" {
+			status.LocalVersion = localRecord.Tag
+		} else {
+			// 如果 Tag 为空或为旧的 "model"，使用日期格式
+			status.LocalVersion = localRecord.UpdateTime.Format("2006-01-02")
+		}
+
 		status.LocalTime = localRecord.UpdateTime
 		status.NeedsUpdate = remoteInfo.UpdateTime.After(localRecord.UpdateTime)
 
 		if status.NeedsUpdate {
-			status.Message = fmt.Sprintf("发现新版本: %s → %s (更新时间: %s)", localRecord.Tag, remoteInfo.Tag, remoteInfo.UpdateTime.Format("2006-01-02"))
+			remoteVersion := remoteInfo.Tag
+			if remoteVersion == "" || remoteVersion == "model" {
+				remoteVersion = remoteInfo.UpdateTime.Format("2006-01-02")
+			}
+			status.Message = fmt.Sprintf("发现新版本: %s → %s", status.LocalVersion, remoteVersion)
 		} else {
-			status.Message = fmt.Sprintf("已是最新版本 (当前版本: %s)", remoteInfo.Tag)
+			status.Message = fmt.Sprintf("已是最新版本 (当前版本: %s)", status.LocalVersion)
 		}
 	} else {
 		status.LocalVersion = "未安装"
@@ -68,8 +81,10 @@ func (m *ModelUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 	if m.Config.Config.UseMirror {
 		// CNB 镜像：模型文件不在版本列表中，使用静态下载地址
 		modelURL := fmt.Sprintf("https://cnb.cool/%s/%s/-/releases/download/model/%s", types.OWNER, types.CNB_REPO, types.MODEL_FILE)
-		// 用户可以通过检查本地文件的哈希值来避免重复下载
-		updateTime := time.Now()
+
+		// 对于 CNB 镜像，使用 HTTP Last-Modified 作为版本标识
+		// 如果获取失败，使用一个固定的时间戳，避免每次都认为有更新
+		updateTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) // 默认固定时间
 		if resp, err := m.APIClient.Head(modelURL); err == nil {
 			if lastModified := resp.Header.Get("Last-Modified"); lastModified != "" {
 				if t, err := time.Parse(time.RFC1123, lastModified); err == nil {
@@ -82,8 +97,8 @@ func (m *ModelUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 			Name:       types.MODEL_FILE,
 			URL:        modelURL,
 			UpdateTime: updateTime,
-			Tag:        "model",
-			Size:       0, // CNB 不提供文件大小信息
+			Tag:        updateTime.Format("2006-01-02"), // 使用日期作为 Tag
+			Size:       0,                               // CNB 不提供文件大小信息
 		}, nil
 	} else {
 		// GitHub：从 RIME-LMDG 仓库获取，使用 tag "LTS"
@@ -156,10 +171,24 @@ func (m *ModelUpdater) Run(progress types.ProgressFunc) error {
 
 	// 校验本地文件
 	progress("正在校验本地文件...", 0.1, "", "", 0, 0, 0, false)
+
+	// 优先使用 SHA256 校验（如果有）
 	if m.UpdateInfo.SHA256 != "" && m.CompareHash(m.UpdateInfo.SHA256, targetPath) {
 		progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
 		m.SaveRecord(recordPath, "model_name", types.MODEL_FILE, m.UpdateInfo)
 		return nil
+	}
+
+	// 如果没有 SHA256（如 CNB 镜像），检查文件是否存在且有本地记录
+	if m.UpdateInfo.SHA256 == "" && fileutil.FileExists(targetPath) {
+		localRecord := m.GetLocalRecord(recordPath)
+		if localRecord != nil && localRecord.Name == types.MODEL_FILE {
+			// 文件存在且有记录，认为已是最新版本（除非 UpdateTime 更新）
+			if !m.UpdateInfo.UpdateTime.After(localRecord.UpdateTime) {
+				progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
+				return nil
+			}
+		}
 	}
 
 	// 下载文件

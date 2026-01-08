@@ -67,9 +67,10 @@ type Model struct {
 	progressChan     chan UpdateMsg         // 进度通道
 	completionChan   chan UpdateCompleteMsg // 完成通道
 	err              error
-	resultMsg        string // 结果消息
-	resultSuccess    bool   // 是否成功
-	resultSkipped    bool   // 是否跳过更新（已是最新版本）
+	resultMsg        string              // 结果消息
+	resultSuccess    bool                // 是否成功
+	resultSkipped    bool                // 是否跳过更新（已是最新版本）
+	autoUpdateResult *AutoUpdateDetails  // 自动更新的详细结果
 	width            int
 	height           int
 
@@ -128,6 +129,15 @@ type UpdateCompleteMsg struct {
 	updateType    string // 更新类型：词库、方案、模型、自动
 	skipped       bool   // 是否跳过更新（已是最新版本）
 	statusMessage string // 状态消息（包含版本信息）
+	// 自动更新的详细结果
+	autoUpdateDetails *AutoUpdateDetails
+}
+
+// AutoUpdateDetails 自动更新的详细结果
+type AutoUpdateDetails struct {
+	UpdatedComponents []string          // 已更新的组件
+	SkippedComponents []string          // 跳过的组件（已是最新版本）
+	ComponentVersions map[string]string // 组件版本信息（组件名 -> 版本号）
 }
 
 // Update 更新模型
@@ -207,8 +217,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.progressChan = nil
 		m.completionChan = nil
 
-		// 保存 skipped 状态
+		// 保存 skipped 状态和自动更新详细结果
 		m.resultSkipped = msg.skipped
+		m.autoUpdateResult = msg.autoUpdateDetails
 
 		if msg.err != nil {
 			m.resultSuccess = false
@@ -857,7 +868,7 @@ func (m *Model) runAutoUpdate() tea.Cmd {
 		// 检查所有更新
 		progressFunc("检查", "正在检查所有更新...", 0.0, "", "", 0, 0, 0, false)
 		if err := combined.FetchAllUpdates(); err != nil {
-			m.completionChan <- UpdateCompleteMsg{err: err, updateType: "自动", skipped: false, statusMessage: ""}
+			m.completionChan <- UpdateCompleteMsg{err: err, updateType: "自动", skipped: false, statusMessage: "", autoUpdateDetails: nil}
 			close(m.progressChan)
 			return
 		}
@@ -865,16 +876,49 @@ func (m *Model) runAutoUpdate() tea.Cmd {
 		// 检查是否有任何更新
 		if !combined.HasAnyUpdate() {
 			progressFunc("完成", "所有组件已是最新版本", 1.0, "", "", 0, 0, 0, false)
-			m.completionChan <- UpdateCompleteMsg{err: nil, updateType: "所有组件", skipped: true, statusMessage: "已是最新版本"}
+			// 所有组件都是最新版本 - 获取所有组件的版本信息
+			componentVersions := make(map[string]string)
+			if schemeStatus, err := combined.SchemeUpdater.GetStatus(); err == nil {
+				componentVersions["方案"] = schemeStatus.LocalVersion
+			}
+			if dictStatus, err := combined.DictUpdater.GetStatus(); err == nil {
+				componentVersions["词库"] = dictStatus.LocalVersion
+			}
+			if modelStatus, err := combined.ModelUpdater.GetStatus(); err == nil {
+				componentVersions["模型"] = modelStatus.LocalVersion
+			}
+
+			details := &AutoUpdateDetails{
+				UpdatedComponents: []string{},
+				SkippedComponents: []string{"方案", "词库", "模型"},
+				ComponentVersions: componentVersions,
+			}
+			m.completionChan <- UpdateCompleteMsg{err: nil, updateType: "自动", skipped: true, statusMessage: "所有组件已是最新版本", autoUpdateDetails: details}
 			close(m.progressChan)
 			return
 		}
 
 		// 执行所有更新
-		err := combined.RunAllWithProgress(progressFunc)
+		result, err := combined.RunAllWithProgress(progressFunc)
+
+		// 构建详细结果
+		var details *AutoUpdateDetails
+		if result != nil {
+			details = &AutoUpdateDetails{
+				UpdatedComponents: result.UpdatedComponents,
+				SkippedComponents: result.SkippedComponents,
+				ComponentVersions: result.ComponentVersions,
+			}
+		}
 
 		// 发送完成消息
-		m.completionChan <- UpdateCompleteMsg{err: err, updateType: "自动", skipped: false, statusMessage: ""}
+		m.completionChan <- UpdateCompleteMsg{
+			err:               err,
+			updateType:        "自动",
+			skipped:           err == nil && len(result.UpdatedComponents) == 0,
+			statusMessage:     "",
+			autoUpdateDetails: details,
+		}
 		close(m.progressChan)
 	}()
 
@@ -917,9 +961,9 @@ func (m Model) renderWizard() string {
 	logo := logoStyle.Render(asciiLogo)
 	b.WriteString(logo + "\n")
 
-	// 启动序列状态
-	bootSeq := RenderBootSequence(version.GetVersion())
-	b.WriteString(bootSeq + "\n")
+	// 简洁的标题
+	header := RenderHeader(version.GetVersion())
+	b.WriteString(header + "\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
@@ -986,9 +1030,9 @@ func (m Model) renderMenu() string {
 	logo := logoStyle.Render(asciiLogo)
 	b.WriteString(logo + "\n")
 
-	// 启动序列状态
-	bootSeq := RenderBootSequence(version.GetVersion())
-	b.WriteString(bootSeq + "\n")
+	// 简洁的标题
+	header := RenderHeader(version.GetVersion())
+	b.WriteString(header + "\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
@@ -1140,9 +1184,9 @@ func (m Model) renderConfig() string {
 	logo := logoStyle.Render(asciiLogo)
 	b.WriteString(logo + "\n")
 
-	// 启动序列状态
-	bootSeq := RenderBootSequence(version.GetVersion())
-	b.WriteString(bootSeq + "\n")
+	// 简洁的标题
+	header := RenderHeader(version.GetVersion())
+	b.WriteString(header + "\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
@@ -1303,9 +1347,9 @@ func (m Model) renderConfigEdit() string {
 	logo := logoStyle.Render(asciiLogo)
 	b.WriteString(logo + "\n")
 
-	// 启动序列状态
-	bootSeq := RenderBootSequence(version.GetVersion())
-	b.WriteString(bootSeq + "\n")
+	// 简洁的标题
+	header := RenderHeader(version.GetVersion())
+	b.WriteString(header + "\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
@@ -1413,9 +1457,9 @@ func (m Model) renderResult() string {
 	logo := logoStyle.Render(asciiLogo)
 	b.WriteString(logo + "\n")
 
-	// 启动序列状态
-	bootSeq := RenderBootSequence(version.GetVersion())
-	b.WriteString(bootSeq + "\n")
+	// 简洁的标题
+	header := RenderHeader(version.GetVersion())
+	b.WriteString(header + "\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
@@ -1448,15 +1492,34 @@ func (m Model) renderResult() string {
 	var msgContent strings.Builder
 	if m.resultSuccess {
 		msgContent.WriteString(successStyle.Render(fmt.Sprintf("%s %s", icon, m.resultMsg)))
-		// 只有在实际执行了更新时才显示"更新已成功应用到系统"
-		if !m.resultSkipped {
+
+		// 如果是自动更新且有详细结果，显示详细信息
+		if m.autoUpdateResult != nil {
 			msgContent.WriteString("\n\n")
-			msgContent.WriteString(configValueStyle.Render("更新已成功应用到系统"))
+
+			// 显示已更新的组件
+			if len(m.autoUpdateResult.UpdatedComponents) > 0 {
+				msgContent.WriteString(RenderCheckList("Updated", m.autoUpdateResult.UpdatedComponents, true, m.autoUpdateResult.ComponentVersions))
+			}
+
+			// 显示跳过的组件（已是最新版本）
+			if len(m.autoUpdateResult.SkippedComponents) > 0 {
+				if len(m.autoUpdateResult.UpdatedComponents) > 0 {
+					msgContent.WriteString("\n")
+				}
+				msgContent.WriteString(RenderCheckList("Up-to-date", m.autoUpdateResult.SkippedComponents, false, m.autoUpdateResult.ComponentVersions))
+			}
+		}
+
+		// 只有在实际执行了更新时才显示"更新已成功应用到系统"
+		if !m.resultSkipped && m.autoUpdateResult != nil && len(m.autoUpdateResult.UpdatedComponents) > 0 {
+			msgContent.WriteString("\n")
+			msgContent.WriteString(configValueStyle.Render("System update completed | 更新已成功应用到系统"))
 		}
 	} else {
 		msgContent.WriteString(errorStyle.Render(fmt.Sprintf("%s %s", icon, m.resultMsg)))
 		msgContent.WriteString("\n\n")
-		msgContent.WriteString(configValueStyle.Render("请检查错误信息并重试"))
+		msgContent.WriteString(configValueStyle.Render("Please check error and retry | 请检查错误信息并重试"))
 	}
 
 	resultMessage := resultBox.Render(msgContent.String())
@@ -1480,9 +1543,9 @@ func (m Model) renderFcitxConflict() string {
 	logo := logoStyle.Render(asciiLogo)
 	b.WriteString(logo + "\n")
 
-	// 启动序列状态
-	bootSeq := RenderBootSequence(version.GetVersion())
-	b.WriteString(bootSeq + "\n")
+	// 简洁的标题
+	header := RenderHeader(version.GetVersion())
+	b.WriteString(header + "\n")
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")

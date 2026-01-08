@@ -77,12 +77,25 @@ func (c *CombinedUpdater) HasAnyUpdate() bool {
 
 // RunAll 执行所有更新
 func (c *CombinedUpdater) RunAll() error {
-	return c.RunAllWithProgress(nil)
+	_, err := c.RunAllWithProgress(nil)
+	return err
+}
+
+// UpdateResult 更新结果
+type UpdateResult struct {
+	UpdatedComponents []string            // 已更新的组件
+	SkippedComponents []string            // 跳过的组件（已是最新版本）
+	ComponentVersions map[string]string   // 组件版本信息（组件名 -> 版本号）
 }
 
 // RunAllWithProgress 执行所有更新并报告进度
-func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool)) error {
+func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool)) (*UpdateResult, error) {
 	var errors []string
+	result := &UpdateResult{
+		UpdatedComponents: []string{},
+		SkippedComponents: []string{},
+		ComponentVersions: make(map[string]string),
+	}
 
 	// 如果没有提供进度回调，使用空函数
 	if progress == nil {
@@ -97,30 +110,41 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 	if c.SchemeUpdater.UpdateInfo != nil {
 		if schemeStatus, err := c.SchemeUpdater.GetStatus(); err == nil && schemeStatus.NeedsUpdate {
 			needsSchemeUpdate = true
+		} else if err == nil {
+			result.SkippedComponents = append(result.SkippedComponents, "方案")
+			result.ComponentVersions["方案"] = schemeStatus.LocalVersion
 		}
 	}
 
 	if c.DictUpdater.UpdateInfo != nil {
 		if dictStatus, err := c.DictUpdater.GetStatus(); err == nil && dictStatus.NeedsUpdate {
 			needsDictUpdate = true
+		} else if err == nil {
+			result.SkippedComponents = append(result.SkippedComponents, "词库")
+			result.ComponentVersions["词库"] = dictStatus.LocalVersion
 		}
 	}
 
 	if c.ModelUpdater.UpdateInfo != nil &&
 		c.ModelUpdater.HasUpdate(c.ModelUpdater.UpdateInfo, c.Config.GetModelRecordPath()) {
 		needsModelUpdate = true
+	} else if c.ModelUpdater.UpdateInfo != nil {
+		if modelStatus, err := c.ModelUpdater.GetStatus(); err == nil {
+			result.SkippedComponents = append(result.SkippedComponents, "模型")
+			result.ComponentVersions["模型"] = modelStatus.LocalVersion
+		}
 	}
 
 	// 如果没有任何更新，直接返回
 	if !needsSchemeUpdate && !needsDictUpdate && !needsModelUpdate {
 		progress("完成", "已是最新版本", 1.0, "", "", 0, 0, 0, false)
-		return nil
+		return result, nil
 	}
 
 	// 统一在开始前终止进程（只终止一次）
 	progress("准备", "正在终止相关进程...", 0.0, "", "", 0, 0, 0, false)
 	if err := c.SchemeUpdater.TerminateProcesses(); err != nil {
-		return fmt.Errorf("终止进程失败: %w", err)
+		return result, fmt.Errorf("终止进程失败: %w", err)
 	}
 
 	// 标记为组合更新模式，让子更新器跳过终止进程步骤
@@ -143,6 +167,8 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 		}
 		if err := c.SchemeUpdater.Run(progressFunc); err != nil {
 			errors = append(errors, fmt.Sprintf("方案更新失败: %v", err))
+		} else {
+			result.UpdatedComponents = append(result.UpdatedComponents, "方案")
 		}
 	}
 
@@ -154,6 +180,8 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 		}
 		if err := c.DictUpdater.Run(progressFunc); err != nil {
 			errors = append(errors, fmt.Sprintf("词库更新失败: %v", err))
+		} else {
+			result.UpdatedComponents = append(result.UpdatedComponents, "词库")
 		}
 	}
 
@@ -165,6 +193,8 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 		}
 		if err := c.ModelUpdater.Run(progressFunc); err != nil {
 			errors = append(errors, fmt.Sprintf("模型更新失败: %v", err))
+		} else {
+			result.UpdatedComponents = append(result.UpdatedComponents, "模型")
 		}
 	}
 
@@ -181,9 +211,9 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 	}
 
 	if len(errors) > 0 {
-		return fmt.Errorf("更新过程中出现错误: %v", errors)
+		return result, fmt.Errorf("更新过程中出现错误: %v", errors)
 	}
 
 	progress("完成", "所有更新已完成", 1.0, "", "", 0, 0, 0, false)
-	return nil
+	return result, nil
 }
