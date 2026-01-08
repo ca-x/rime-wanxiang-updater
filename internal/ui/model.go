@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"rime-wanxiang-updater/internal/config"
+	"rime-wanxiang-updater/internal/detector"
 	"rime-wanxiang-updater/internal/types"
 	"rime-wanxiang-updater/internal/updater"
 	"rime-wanxiang-updater/internal/version"
@@ -67,10 +68,10 @@ type Model struct {
 	progressChan     chan UpdateMsg         // 进度通道
 	completionChan   chan UpdateCompleteMsg // 完成通道
 	err              error
-	resultMsg        string              // 结果消息
-	resultSuccess    bool                // 是否成功
-	resultSkipped    bool                // 是否跳过更新（已是最新版本）
-	autoUpdateResult *AutoUpdateDetails  // 自动更新的详细结果
+	resultMsg        string             // 结果消息
+	resultSuccess    bool               // 是否成功
+	resultSkipped    bool               // 是否跳过更新（已是最新版本）
+	autoUpdateResult *AutoUpdateDetails // 自动更新的详细结果
 	width            int
 	height           int
 
@@ -85,6 +86,9 @@ type Model struct {
 	fcitxConflictChoice   int    // 对话框按钮选择 (0=删除, 1=备份, 2=不再提示复选框)
 	fcitxConflictNoPrompt bool   // 是否选中"不再提示"
 	fcitxConflictCallback func() // 冲突解决后的回调函数
+
+	// Rime 安装检测
+	rimeInstallStatus detector.InstallationStatus // Rime 安装状态
 }
 
 // NewModel 创建新模型
@@ -99,11 +103,15 @@ func NewModel(cfg *config.Manager) Model {
 		state = ViewWizard
 	}
 
+	// 检测 Rime 安装状态
+	rimeStatus := detector.CheckRimeInstallation()
+
 	return Model{
-		cfg:        cfg,
-		state:      state,
-		wizardStep: wizardStep,
-		progress:   p,
+		cfg:               cfg,
+		state:             state,
+		wizardStep:        wizardStep,
+		progress:          p,
+		rimeInstallStatus: rimeStatus,
 	}
 }
 
@@ -968,6 +976,17 @@ func (m Model) renderWizard() string {
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
 
+	// 显示 Rime 安装状态警告（如果未安装）
+	if !m.rimeInstallStatus.Installed {
+		warningBox := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(glitchRed).
+			Padding(1, 2).
+			Width(60).
+			Foreground(glitchRed)
+		b.WriteString(warningBox.Render(m.rimeInstallStatus.Message) + "\n\n")
+	}
+
 	// 错误信息
 	if m.err != nil {
 		errorMsg := errorStyle.Render("⚠ 严重错误 ⚠ " + m.err.Error())
@@ -1036,6 +1055,17 @@ func (m Model) renderMenu() string {
 
 	// 扫描线效果
 	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
+
+	// 显示 Rime 安装状态警告（如果未安装）
+	if !m.rimeInstallStatus.Installed {
+		warningBox := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(glitchRed).
+			Padding(1, 2).
+			Width(60).
+			Foreground(glitchRed)
+		b.WriteString(warningBox.Render(m.rimeInstallStatus.Message) + "\n\n")
+	}
 
 	// 主菜单标题
 	menuTitle := RenderGradientTitle("⚡ 主控制面板 ⚡")
