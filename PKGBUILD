@@ -10,8 +10,8 @@ depends=()
 provides=('rime-wanxiang-updater')
 conflicts=()
 
-source_x86_64=("${url}/releases/download/v${pkgver}/${pkgname}-linux-amd64")
-source_aarch64=("${url}/releases/download/v${pkgver}/${pkgname}-linux-arm64")
+source_x86_64=("${pkgname}-${pkgver}-linux-amd64::${url}/releases/download/v${pkgver}/${pkgname}-linux-amd64")
+source_aarch64=("${pkgname}-${pkgver}-linux-arm64::${url}/releases/download/v${pkgver}/${pkgname}-linux-arm64")
 
 sha256sums_x86_64=('SKIP')
 sha256sums_aarch64=('SKIP')
@@ -19,8 +19,8 @@ sha256sums_aarch64=('SKIP')
 package() {
     # 根据架构选择对应的二进制文件
     case "${CARCH}" in
-        x86_64)  _binary="${pkgname}-linux-amd64" ;;
-        aarch64) _binary="${pkgname}-linux-arm64" ;;
+        x86_64)  _binary="${pkgname}-${pkgver}-linux-amd64" ;;
+        aarch64) _binary="${pkgname}-${pkgver}-linux-arm64" ;;
     esac
 
     install -Dm755 "${srcdir}/${_binary}" "${pkgdir}/usr/bin/${pkgname}"
