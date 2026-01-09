@@ -5,6 +5,7 @@ import (
 
 	"rime-wanxiang-updater/internal/config"
 	"rime-wanxiang-updater/internal/detector"
+	"rime-wanxiang-updater/internal/theme"
 
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,8 +29,31 @@ func NewModel(cfg *config.Manager) Model {
 		countdown = 5
 	}
 
+	// 初始化主题管理器
+	themeMgr := theme.NewManager()
+
+	// 从配置加载主题设置
+	if cfg.Config.ThemeAdaptive {
+		light := cfg.Config.ThemeLight
+		dark := cfg.Config.ThemeDark
+		if light == "" {
+			light = "cyberpunk-light"
+		}
+		if dark == "" {
+			dark = "cyberpunk"
+		}
+		themeMgr.SetAdaptiveTheme(light, dark)
+	} else if cfg.Config.ThemeFixed != "" {
+		themeMgr.SetTheme(cfg.Config.ThemeFixed)
+	}
+
+	// 创建主题化样式
+	styles := DefaultStyles(themeMgr)
+
 	return Model{
 		Cfg:                 cfg,
+		ThemeManager:        themeMgr,
+		Styles:              styles,
 		State:               state,
 		WizardStep:          wizardStep,
 		Progress:            p,
@@ -73,6 +97,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleExcludeAddInput(msg)
 		case ViewFcitxConflict:
 			return m.handleFcitxConflictInput(msg)
+		case ViewThemeList:
+			return m.handleThemeListInput(msg)
 		case ViewResult:
 			return m.handleResultInput(msg)
 		case ViewUpdating:
@@ -173,6 +199,8 @@ func (m Model) View() string {
 		return m.renderExcludeAdd()
 	case ViewFcitxConflict:
 		return m.renderFcitxConflict()
+	case ViewThemeList:
+		return m.renderThemeList()
 	case ViewResult:
 		return m.renderResult()
 	}

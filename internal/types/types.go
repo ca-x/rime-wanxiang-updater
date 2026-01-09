@@ -47,6 +47,12 @@ type Config struct {
 	FcitxConflictPrompt bool     `json:"fcitx_conflict_prompt"` // Linux 专用：是否每次都提示（true）还是使用记忆的偏好（false）
 	PreUpdateHook       string   `json:"pre_update_hook"`       // 更新前执行的脚本路径
 	PostUpdateHook      string   `json:"post_update_hook"`      // 更新后执行的脚本路径
+
+	// 主题配置
+	ThemeAdaptive   bool   `json:"theme_adaptive"`    // 是否启用自适应主题（根据终端明暗自动切换）
+	ThemeLight      string `json:"theme_light"`       // 浅色模式主题
+	ThemeDark       string `json:"theme_dark"`        // 深色模式主题
+	ThemeFixed      string `json:"theme_fixed"`       // 固定主题（非自适应模式时使用）
 }
 
 // UpdateInfo 更新信息

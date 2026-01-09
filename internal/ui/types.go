@@ -3,6 +3,7 @@ package ui
 import (
 	"rime-wanxiang-updater/internal/config"
 	"rime-wanxiang-updater/internal/detector"
+	"rime-wanxiang-updater/internal/theme"
 
 	"github.com/charmbracelet/bubbles/progress"
 )
@@ -21,6 +22,7 @@ const (
 	ViewExcludeEdit   // 编辑排除模式
 	ViewExcludeAdd    // 添加排除模式
 	ViewFcitxConflict // Fcitx 目录冲突对话框
+	ViewThemeList     // 主题列表
 )
 
 // WizardStep 向导步骤
@@ -36,6 +38,8 @@ const (
 // Model Bubble Tea 模型
 type Model struct {
 	Cfg              *config.Manager
+	ThemeManager     *theme.Manager // 主题管理器
+	Styles           *Styles        // 主题化样式
 	State            ViewState
 	WizardStep       WizardStep
 	MenuChoice       int
@@ -82,6 +86,10 @@ type Model struct {
 	// 自动更新倒计时相关
 	AutoUpdateCountdown int  // 自动更新倒计时（秒）
 	AutoUpdateCancelled bool // 是否已取消自动更新
+
+	// 主题选择相关
+	ThemeListChoice int      // 主题列表光标位置
+	ThemeList       []string // 当前显示的主题列表
 }
 
 // UpdateMsg 更新消息类型

@@ -105,17 +105,22 @@ func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.State = ViewConfig
 		return m, nil
 	case "6":
+		// 切换主题 - 进入主题选择
+		m.InitThemeListView("theme_quick")
+		m.State = ViewThemeList
+		return m, nil
+	case "7":
 		m.State = ViewWizard
 		m.WizardStep = WizardSchemeType
 		return m, nil
-	case "7", "q", "ctrl+c":
+	case "8", "q", "ctrl+c":
 		return m, tea.Quit
 	case "up", "k":
 		if m.MenuChoice > 0 {
 			m.MenuChoice--
 		}
 	case "down", "j":
-		if m.MenuChoice < 6 {
+		if m.MenuChoice < 7 {
 			m.MenuChoice++
 		}
 	case "enter":
@@ -140,10 +145,15 @@ func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.State = ViewConfig
 			return m, nil
 		case 5:
+			// 切换主题
+			m.InitThemeListView("theme_quick")
+			m.State = ViewThemeList
+			return m, nil
+		case 6:
 			m.State = ViewWizard
 			m.WizardStep = WizardSchemeType
 			return m, nil
-		case 6:
+		case 7:
 			return m, tea.Quit
 		}
 	}
@@ -186,6 +196,14 @@ func (m Model) handleConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		maxChoice += 2 // PreUpdateHook, PostUpdateHook
 		maxChoice++    // ExcludeFileManager
 
+		// 主题配置
+		maxChoice++ // ThemeAdaptive
+		if m.Cfg.Config.ThemeAdaptive {
+			maxChoice += 2 // ThemeLight, ThemeDark
+		} else {
+			maxChoice++ // ThemeFixed
+		}
+
 		if m.ConfigChoice < maxChoice {
 			m.ConfigChoice++
 		}
@@ -219,12 +237,27 @@ func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 	configItems = append(configItems, "pre_update_hook", "post_update_hook")
 	configItems = append(configItems, "exclude_file_manager")
 
+	// 主题配置
+	configItems = append(configItems, "theme_adaptive")
+	if m.Cfg.Config.ThemeAdaptive {
+		configItems = append(configItems, "theme_light", "theme_dark")
+	} else {
+		configItems = append(configItems, "theme_fixed")
+	}
+
 	if m.ConfigChoice < len(configItems) {
 		selectedKey := configItems[m.ConfigChoice]
 
 		if selectedKey == "exclude_file_manager" {
 			m.InitExcludeView()
 			m.State = ViewExcludeList
+			return m, nil
+		}
+
+		// 主题选择器
+		if selectedKey == "theme_dark" || selectedKey == "theme_light" || selectedKey == "theme_fixed" {
+			m.InitThemeListView(selectedKey)
+			m.State = ViewThemeList
 			return m, nil
 		}
 
@@ -271,6 +304,12 @@ func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 			m.EditingValue = m.Cfg.Config.PreUpdateHook
 		case "post_update_hook":
 			m.EditingValue = m.Cfg.Config.PostUpdateHook
+		case "theme_adaptive":
+			if m.Cfg.Config.ThemeAdaptive {
+				m.EditingValue = "true"
+			} else {
+				m.EditingValue = "false"
+			}
 		}
 
 		m.State = ViewConfigEdit
@@ -281,7 +320,7 @@ func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 // handleConfigEditInput 处理配置编辑输入
 func (m Model) handleConfigEditInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	isBooleanField := m.EditingKey == "use_mirror" || m.EditingKey == "auto_update" || m.EditingKey == "proxy_enabled" ||
-		m.EditingKey == "fcitx_compat" || m.EditingKey == "fcitx_use_link"
+		m.EditingKey == "fcitx_compat" || m.EditingKey == "fcitx_use_link" || m.EditingKey == "theme_adaptive"
 
 	switch msg.String() {
 	case "ctrl+c":
@@ -406,6 +445,24 @@ func (m Model) saveConfigEdit() (tea.Model, tea.Cmd) {
 		m.Cfg.Config.PreUpdateHook = m.EditingValue
 	case "post_update_hook":
 		m.Cfg.Config.PostUpdateHook = m.EditingValue
+	case "theme_adaptive":
+		m.Cfg.Config.ThemeAdaptive = m.EditingValue == "true"
+		// 更新主题管理器
+		if m.Cfg.Config.ThemeAdaptive {
+			light := m.Cfg.Config.ThemeLight
+			dark := m.Cfg.Config.ThemeDark
+			if light == "" {
+				light = "cyberpunk-light"
+			}
+			if dark == "" {
+				dark = "cyberpunk"
+			}
+			m.ThemeManager.SetAdaptiveTheme(light, dark)
+		} else if m.Cfg.Config.ThemeFixed != "" {
+			m.ThemeManager.SetTheme(m.Cfg.Config.ThemeFixed)
+		}
+		// 刷新样式
+		m.Styles = DefaultStyles(m.ThemeManager)
 	}
 
 	if err := m.Cfg.SaveConfig(); err != nil {

@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"rime-wanxiang-updater/internal/config"
+	"rime-wanxiang-updater/internal/termcolor"
 	"rime-wanxiang-updater/internal/ui"
 	"rime-wanxiang-updater/internal/version"
 )
@@ -97,8 +98,8 @@ func printBootSequence() {
 }
 
 func main() {
-	// 初始化主题（自动检测终端背景色）
-	ui.InitTheme()
+	// 初始化终端颜色检测（自动检测终端背景色）
+	termcolor.InitLipgloss()
 
 	// 显示启动序列
 	printBootSequence()

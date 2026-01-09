@@ -254,7 +254,7 @@ func RenderGradientTitle(text string) string {
 	return "\n" + centeredResult + "\n"
 }
 
-// RenderStatusBar 渲染底部状态栏
+// RenderStatusBar 渲染底部状态栏（保留用于向后兼容）
 func RenderStatusBar(version, engine, source string) string {
 	const width = 65
 
@@ -282,6 +282,36 @@ func RenderStatusBar(version, engine, source string) string {
 	}
 
 	return statusBarStyle.Width(width).Render(bar)
+}
+
+// RenderStatusBarThemed 渲染底部状态栏（主题化版本）
+func RenderStatusBarThemed(s *Styles, version, engine, source string) string {
+	const width = 65
+
+	versionKey := s.StatusKey.Render("版本")
+	versionVal := s.StatusValue.Render(version)
+
+	engineKey := s.StatusKey.Render("引擎")
+	engineVal := s.StatusValue.Render(engine)
+
+	sourceKey := s.StatusKey.Render("下载源")
+	sourceVal := s.StatusValue.Render(source)
+
+	// 拼接状态栏
+	bar := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		versionKey, versionVal, " ",
+		engineKey, engineVal, " ",
+		sourceKey, sourceVal,
+	)
+
+	// 填充到固定宽度
+	barWidth := lipgloss.Width(bar)
+	if barWidth < width {
+		bar += strings.Repeat(" ", width-barWidth)
+	}
+
+	return s.StatusBar.Width(width).Render(bar)
 }
 
 // RenderBootSequence 渲染启动序列状态

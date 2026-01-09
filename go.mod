@@ -11,6 +11,8 @@ require (
 	github.com/muesli/gamut v0.3.1
 	golang.org/x/net v0.48.0
 	golang.org/x/sys v0.39.0
+	golang.org/x/term v0.38.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -33,6 +35,5 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/term v0.38.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 )

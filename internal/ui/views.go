@@ -17,26 +17,26 @@ import (
 func (m Model) renderWizard() string {
 	var b strings.Builder
 
-	logo := logoStyle.Render(asciiLogo)
+	logo := m.Styles.Logo.Render(asciiLogo)
 	b.WriteString(logo + "\n")
 
 	header := RenderHeader(version.GetVersion())
 	b.WriteString(header + "\n")
 
-	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
+	b.WriteString(m.Styles.ScanLine.Render(scanLine) + "\n\n")
 
 	if !m.RimeInstallStatus.Installed {
 		warningBox := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(glitchRed).
+			BorderForeground(m.Styles.Error).
 			Padding(1, 2).
 			Width(60).
-			Foreground(glitchRed)
+			Foreground(m.Styles.Error)
 		b.WriteString(warningBox.Render(m.RimeInstallStatus.Message) + "\n\n")
 	}
 
 	if m.Err != nil {
-		errorMsg := errorStyle.Render("⚠ 严重错误 ⚠ " + m.Err.Error())
+		errorMsg := m.Styles.ErrorText.Render("⚠ 严重错误 ⚠ " + m.Err.Error())
 		b.WriteString(errorMsg + "\n\n")
 	}
 
@@ -45,47 +45,47 @@ func (m Model) renderWizard() string {
 		wizardTitle := RenderGradientTitle("⚡ 初始化向导 ⚡")
 		b.WriteString(wizardTitle + "\n\n")
 
-		question := infoBoxStyle.Render("▸ 选择方案版本:")
+		question := m.Styles.InfoBox.Render("▸ 选择方案版本:")
 		b.WriteString(question + "\n\n")
 
-		b.WriteString(menuItemStyle.Render("  [1] ► 万象基础版") + "\n")
-		b.WriteString(menuItemStyle.Render("  [2] ► 万象增强版（支持辅助码）") + "\n\n")
+		b.WriteString(m.Styles.MenuItem.Render("  [1] ► 万象基础版") + "\n")
+		b.WriteString(m.Styles.MenuItem.Render("  [2] ► 万象增强版（支持辅助码）") + "\n\n")
 
-		b.WriteString(gridStyle.Render(gridLine) + "\n")
-		hint := hintStyle.Render("[>] Input: 1-2 | [Q] Quit")
+		b.WriteString(m.Styles.Grid.Render(gridLine) + "\n")
+		hint := m.Styles.Hint.Render("[>] Input: 1-2 | [Q] Quit")
 		b.WriteString(hint)
 
 	case WizardSchemeVariant:
 		wizardTitle := RenderGradientTitle("⚡ 初始化向导 ⚡")
 		b.WriteString(wizardTitle + "\n\n")
 
-		question := infoBoxStyle.Render("▸ 选择辅助码方案:")
+		question := m.Styles.InfoBox.Render("▸ 选择辅助码方案:")
 		b.WriteString(question + "\n\n")
 
 		for k, v := range types.SchemeMap {
-			b.WriteString(menuItemStyle.Render(fmt.Sprintf("  [%s] ► %s", k, v)) + "\n")
+			b.WriteString(m.Styles.MenuItem.Render(fmt.Sprintf("  [%s] ► %s", k, v)) + "\n")
 		}
 
-		b.WriteString("\n" + gridStyle.Render(gridLine) + "\n")
-		hint := hintStyle.Render("[>] Input: 1-7 | [Q] Quit")
+		b.WriteString("\n" + m.Styles.Grid.Render(gridLine) + "\n")
+		hint := m.Styles.Hint.Render("[>] Input: 1-7 | [Q] Quit")
 		b.WriteString(hint)
 
 	case WizardDownloadSource:
 		wizardTitle := RenderGradientTitle("⚡ 初始化向导 ⚡")
 		b.WriteString(wizardTitle + "\n\n")
 
-		question := infoBoxStyle.Render("▸ 选择下载源:")
+		question := m.Styles.InfoBox.Render("▸ 选择下载源:")
 		b.WriteString(question + "\n\n")
 
-		b.WriteString(menuItemStyle.Render("  [1] ► CNB 镜像（推荐，国内访问更快）") + "\n")
-		b.WriteString(menuItemStyle.Render("  [2] ► GitHub 官方源") + "\n\n")
+		b.WriteString(m.Styles.MenuItem.Render("  [1] ► CNB 镜像（推荐，国内访问更快）") + "\n")
+		b.WriteString(m.Styles.MenuItem.Render("  [2] ► GitHub 官方源") + "\n\n")
 
-		b.WriteString(gridStyle.Render(gridLine) + "\n")
-		hint := hintStyle.Render("[>] Input: 1-2 | [Q] Quit")
+		b.WriteString(m.Styles.Grid.Render(gridLine) + "\n")
+		hint := m.Styles.Hint.Render("[>] Input: 1-2 | [Q] Quit")
 		b.WriteString(hint)
 	}
 
-	return containerStyle.Render(b.String())
+	return m.Styles.Container.Render(b.String())
 }
 
 // renderMenu 渲染菜单
@@ -98,15 +98,15 @@ func (m Model) renderMenu() string {
 	header := RenderHeader(version.GetVersion())
 	b.WriteString(header + "\n")
 
-	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
+	b.WriteString(m.Styles.ScanLine.Render(scanLine) + "\n\n")
 
 	if !m.RimeInstallStatus.Installed {
 		warningBox := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(glitchRed).
+			BorderForeground(m.Styles.Error).
 			Padding(1, 2).
 			Width(60).
-			Foreground(glitchRed)
+			Foreground(m.Styles.Error)
 		b.WriteString(warningBox.Render(m.RimeInstallStatus.Message) + "\n\n")
 	}
 
@@ -122,6 +122,7 @@ func (m Model) renderMenu() string {
 		{"▣", "方案更新"},
 		{"▣", "模型更新"},
 		{"▣", "查看配置"},
+		{"🎨", "切换主题 (" + m.ThemeManager.CurrentName() + ")"},
 		{"▣", "设置向导"},
 		{"▣", "退出程序"},
 	}
@@ -129,13 +130,13 @@ func (m Model) renderMenu() string {
 	for i, item := range menuItems {
 		itemText := fmt.Sprintf(" %s  [%d] %s", item.icon, i+1, item.text)
 		if i == m.MenuChoice {
-			b.WriteString(selectedMenuItemStyle.Render("►"+itemText) + "\n")
+			b.WriteString(m.Styles.SelectedMenuItem.Render("►"+itemText) + "\n")
 		} else {
-			b.WriteString(menuItemStyle.Render(" "+itemText) + "\n")
+			b.WriteString(m.Styles.MenuItem.Render(" "+itemText) + "\n")
 		}
 	}
 
-	b.WriteString("\n" + gridStyle.Render(gridLine) + "\n")
+	b.WriteString("\n" + m.Styles.Grid.Render(gridLine) + "\n")
 
 	if m.Cfg.Config.AutoUpdate && !m.AutoUpdateCancelled && m.AutoUpdateCountdown > 0 {
 		countdownStyle := lipgloss.NewStyle().
@@ -149,10 +150,11 @@ func (m Model) renderMenu() string {
 		b.WriteString(cancelledStyle.Render("✓ 已取消自动更新") + "\n\n")
 	}
 
-	hint := hintStyle.Render("[>] Input: 1-7 | Navigate: J/K or Arrow Keys | [Q] Quit")
+	hint := m.Styles.Hint.Render("[>] Input: 1-8 | Navigate: J/K or Arrow Keys | [Q] Quit")
 	b.WriteString(hint + "\n\n")
 
-	statusBar := RenderStatusBar(
+	statusBar := RenderStatusBarThemed(
+		m.Styles,
 		version.GetVersion(),
 		m.Cfg.Config.Engine,
 		func() string {
@@ -164,7 +166,7 @@ func (m Model) renderMenu() string {
 	)
 	b.WriteString(statusBar)
 
-	return containerStyle.Render(b.String())
+	return m.Styles.Container.Render(b.String())
 }
 
 // renderUpdating 渲染更新中
@@ -249,7 +251,7 @@ func (m Model) renderConfig() string {
 	header := RenderHeader(version.GetVersion())
 	b.WriteString(header + "\n")
 
-	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
+	b.WriteString(m.Styles.ScanLine.Render(scanLine) + "\n\n")
 
 	title := RenderGradientTitle("⚡ 系统配置 ⚡")
 	b.WriteString(title + "\n\n")
@@ -372,43 +374,117 @@ func (m Model) renderConfig() string {
 			index    int
 		}{"📋 管理排除文件", excludeCount, true, editIndex},
 	)
+	editIndex++
+
+	// 主题配置
+	adaptiveText := "禁用"
+	if m.Cfg.Config.ThemeAdaptive {
+		adaptiveText = "启用"
+	}
+	editableConfigs = append(editableConfigs,
+		struct {
+			key      string
+			value    string
+			editable bool
+			index    int
+		}{"🎨 自适应主题", adaptiveText, true, editIndex},
+	)
+	editIndex++
+
+	if m.Cfg.Config.ThemeAdaptive {
+		lightTheme := m.Cfg.Config.ThemeLight
+		if lightTheme == "" {
+			lightTheme = "cyberpunk-light"
+		}
+		darkTheme := m.Cfg.Config.ThemeDark
+		if darkTheme == "" {
+			darkTheme = "cyberpunk"
+		}
+		// 显示检测到的背景
+		bg := m.ThemeManager.Background()
+		bgNote := ""
+		if bg.IsDark() {
+			bgNote = " (当前使用↓)"
+		} else {
+			bgNote = " (当前使用↓)"
+		}
+		editableConfigs = append(editableConfigs,
+			struct {
+				key      string
+				value    string
+				editable bool
+				index    int
+			}{"  ☀️ 浅色主题", lightTheme + func() string {
+				if !bg.IsDark() {
+					return bgNote
+				}
+				return ""
+			}(), true, editIndex},
+			struct {
+				key      string
+				value    string
+				editable bool
+				index    int
+			}{"  🌙 深色主题", darkTheme + func() string {
+				if bg.IsDark() {
+					return bgNote
+				}
+				return ""
+			}(), true, editIndex + 1},
+		)
+		editIndex += 2
+	} else {
+		fixedTheme := m.Cfg.Config.ThemeFixed
+		if fixedTheme == "" {
+			fixedTheme = m.ThemeManager.CurrentName()
+		}
+		editableConfigs = append(editableConfigs,
+			struct {
+				key      string
+				value    string
+				editable bool
+				index    int
+			}{"  🎨 固定主题", fixedTheme, true, editIndex},
+		)
+		editIndex++
+	}
 
 	var configContent strings.Builder
 	for _, cfg := range editableConfigs {
-		key := configKeyStyle.Render(cfg.key + ":")
-		value := configValueStyle.Render(cfg.value)
+		key := m.Styles.ConfigKey.Render(cfg.key + ":")
+		value := m.Styles.ConfigValue.Render(cfg.value)
 		line := "  ▸ " + key + " " + value
 
 		if cfg.editable && cfg.index == m.ConfigChoice {
-			line = selectedMenuItemStyle.Render("►" + line)
+			line = m.Styles.SelectedMenuItem.Render("►" + line)
 		} else {
-			line = menuItemStyle.Render(" " + line)
+			line = m.Styles.MenuItem.Render(" " + line)
 		}
 
 		configContent.WriteString(line + "\n")
 	}
 
-	configBox := infoBoxStyle.Render(configContent.String())
+	configBox := m.Styles.InfoBox.Render(configContent.String())
 	b.WriteString(configBox + "\n\n")
 
 	pathBox := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
-		BorderForeground(neonPurple).
+		BorderForeground(m.Styles.Secondary).
 		Padding(0, 1).
-		Foreground(neonPurple)
+		Foreground(m.Styles.Secondary)
 
 	pathInfo := pathBox.Render("配置路径: " + m.Cfg.ConfigPath)
 	b.WriteString(pathInfo + "\n\n")
 
-	hint1 := warningStyle.Render("[!] Use Arrow Keys to select, Enter to edit")
+	hint1 := m.Styles.WarningText.Render("[!] Use Arrow Keys to select, Enter to edit")
 	b.WriteString(hint1 + "\n\n")
 
-	b.WriteString(gridStyle.Render(gridLine) + "\n")
+	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n")
 
-	hint2 := hintStyle.Render("[>] Navigate: J/K or Arrow Keys | [Enter] Edit | [Q]/[ESC] Back")
+	hint2 := m.Styles.Hint.Render("[>] Navigate: J/K or Arrow Keys | [Enter] Edit | [Q]/[ESC] Back")
 	b.WriteString(hint2)
 
-	return containerStyle.Render(b.String())
+	return m.Styles.Container.Render(b.String())
 }
 
 // renderConfigEdit 渲染配置编辑
@@ -421,7 +497,7 @@ func (m Model) renderConfigEdit() string {
 	header := RenderHeader(version.GetVersion())
 	b.WriteString(header + "\n")
 
-	b.WriteString(scanLineStyle.Render(scanLine) + "\n\n")
+	b.WriteString(m.Styles.ScanLine.Render(scanLine) + "\n\n")
 
 	title := RenderGradientTitle("⚡ 编辑配置 ⚡")
 	b.WriteString(title + "\n\n")
@@ -465,16 +541,20 @@ func (m Model) renderConfigEdit() string {
 	case "post_update_hook":
 		configName = "更新后Hook"
 		inputHint = "脚本路径(如~/notify.sh),更新后执行,失败不影响更新结果"
+	case "theme_adaptive":
+		configName = "自适应主题"
+		inputHint = "启用后根据终端明暗自动切换主题 | [1] Enable  [2] Disable"
+		isBooleanField = true
 	}
 
 	editBox := lipgloss.NewStyle().
 		Border(lipgloss.ThickBorder()).
-		BorderForeground(neonMagenta).
+		BorderForeground(m.Styles.Secondary).
 		Padding(1, 2).
 		Width(60)
 
 	var editContent strings.Builder
-	editContent.WriteString(configKeyStyle.Render("配置项: ") + configValueStyle.Render(configName) + "\n\n")
+	editContent.WriteString(m.Styles.ConfigKey.Render("配置项: ") + m.Styles.ConfigValue.Render(configName) + "\n\n")
 
 	if isBooleanField {
 		trueSelected := m.EditingValue == "true"
@@ -482,36 +562,36 @@ func (m Model) renderConfigEdit() string {
 
 		var trueOption, falseOption string
 		if trueSelected {
-			trueOption = selectedMenuItemStyle.Render("► [1] Enable (true)")
+			trueOption = m.Styles.SelectedMenuItem.Render("► [1] Enable (true)")
 		} else {
-			trueOption = menuItemStyle.Render("  [1] Enable (true)")
+			trueOption = m.Styles.MenuItem.Render("  [1] Enable (true)")
 		}
 
 		if falseSelected {
-			falseOption = selectedMenuItemStyle.Render("► [2] Disable (false)")
+			falseOption = m.Styles.SelectedMenuItem.Render("► [2] Disable (false)")
 		} else {
-			falseOption = menuItemStyle.Render("  [2] Disable (false)")
+			falseOption = m.Styles.MenuItem.Render("  [2] Disable (false)")
 		}
 
 		editContent.WriteString(trueOption + "\n")
 		editContent.WriteString(falseOption + "\n\n")
 	} else {
-		editContent.WriteString(configKeyStyle.Render("当前值: "))
-		valueWithCursor := m.EditingValue + blinkStyle.Render("_")
-		editContent.WriteString(successStyle.Render(valueWithCursor) + "\n\n")
+		editContent.WriteString(m.Styles.ConfigKey.Render("当前值: "))
+		valueWithCursor := m.EditingValue + m.Styles.Blink.Render("_")
+		editContent.WriteString(m.Styles.SuccessText.Render(valueWithCursor) + "\n\n")
 	}
 
-	editContent.WriteString(hintStyle.Render(inputHint))
+	editContent.WriteString(m.Styles.Hint.Render(inputHint))
 
 	editBoxRendered := editBox.Render(editContent.String())
 	b.WriteString(editBoxRendered + "\n\n")
 
-	b.WriteString(gridStyle.Render(gridLine) + "\n\n")
+	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n\n")
 
-	hint := hintStyle.Render("[>] [Enter] Save | [ESC] Cancel | [Backspace] Delete")
+	hint := m.Styles.Hint.Render("[>] [Enter] Save | [ESC] Cancel | [Backspace] Delete")
 	b.WriteString(hint)
 
-	return containerStyle.Render(b.String())
+	return m.Styles.Container.Render(b.String())
 }
 
 // renderResult 渲染更新结果
