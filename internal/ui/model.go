@@ -1,9 +1,10 @@
 package ui
 
 import (
-	"fmt"
+	"time"
 
 	"rime-wanxiang-updater/internal/config"
+	"rime-wanxiang-updater/internal/controller"
 	"rime-wanxiang-updater/internal/detector"
 	"rime-wanxiang-updater/internal/theme"
 
@@ -12,7 +13,12 @@ import (
 )
 
 // NewModel 创建新模型
-func NewModel(cfg *config.Manager) Model {
+func NewModel(
+	cfg *config.Manager,
+	themeMgr *theme.Manager,
+	commandChan chan<- controller.Command,
+	eventChan <-chan controller.Event,
+) Model {
 	p := progress.New(progress.WithDefaultGradient())
 	p.Width = 60
 
@@ -29,28 +35,12 @@ func NewModel(cfg *config.Manager) Model {
 		countdown = 5
 	}
 
-	// 初始化主题管理器
-	themeMgr := theme.NewManager()
-
-	// 从配置加载主题设置
-	if cfg.Config.ThemeAdaptive {
-		light := cfg.Config.ThemeLight
-		dark := cfg.Config.ThemeDark
-		if light == "" {
-			light = "cyberpunk-light"
-		}
-		if dark == "" {
-			dark = "cyberpunk"
-		}
-		themeMgr.SetAdaptiveTheme(light, dark)
-	} else if cfg.Config.ThemeFixed != "" {
-		themeMgr.SetTheme(cfg.Config.ThemeFixed)
-	}
-
 	// 创建主题化样式
 	styles := DefaultStyles(themeMgr)
 
 	return Model{
+		CommandChan:         commandChan,
+		EventChan:           eventChan,
 		Cfg:                 cfg,
 		ThemeManager:        themeMgr,
 		Styles:              styles,
@@ -64,10 +54,14 @@ func NewModel(cfg *config.Manager) Model {
 
 // Init 初始化
 func (m Model) Init() tea.Cmd {
+	// 启动事件监听和倒计时（如果需要）
+	cmds := []tea.Cmd{listenForEvents(m.EventChan)}
+
 	if m.State == ViewMenu && m.Cfg.Config.AutoUpdate {
-		return countdownTick()
+		cmds = append(cmds, countdownTick())
 	}
-	return nil
+
+	return tea.Batch(cmds...)
 }
 
 // Update 更新模型
@@ -78,6 +72,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Height = msg.Height
 		m.Progress.Width = msg.Width - 4
 		return m, nil
+
+	case controller.Event:
+		return m.handleControllerEvent(msg)
 
 	case tea.KeyMsg:
 		switch m.State {
@@ -106,60 +103,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "q", "esc":
 				m.State = ViewMenu
 				m.Updating = false
-				m.ProgressChan = nil
-				m.CompletionChan = nil
 				return m, nil
 			case "ctrl+c":
 				return m, tea.Quit
 			}
 			return m, nil
 		}
-
-	case UpdateMsg:
-		m.ProgressMsg = msg.Message
-
-		if msg.DownloadMode {
-			m.IsDownloading = true
-			m.DownloadSource = msg.Source
-			m.DownloadFileName = msg.FileName
-			m.Downloaded = msg.Downloaded
-			m.TotalSize = msg.Total
-			m.DownloadSpeed = msg.Speed
-		} else {
-			m.IsDownloading = false
-		}
-
-		cmd := m.Progress.SetPercent(msg.Percent)
-		if m.ProgressChan != nil && m.CompletionChan != nil {
-			return m, tea.Batch(cmd, listenForProgress(m.ProgressChan, m.CompletionChan))
-		}
-		return m, cmd
-
-	case UpdateCompleteMsg:
-		m.Updating = false
-		m.State = ViewResult
-
-		m.ProgressChan = nil
-		m.CompletionChan = nil
-
-		m.ResultSkipped = msg.Skipped
-		m.AutoUpdateResult = msg.AutoUpdateDetails
-
-		if msg.Err != nil {
-			m.ResultSuccess = false
-			m.ResultMsg = fmt.Sprintf("%s更新失败: %v", msg.UpdateType, msg.Err)
-		} else if msg.Skipped {
-			m.ResultSuccess = true
-			if msg.StatusMessage != "" {
-				m.ResultMsg = fmt.Sprintf("%s%s", msg.UpdateType, msg.StatusMessage)
-			} else {
-				m.ResultMsg = fmt.Sprintf("%s已是最新版本，无需更新", msg.UpdateType)
-			}
-		} else {
-			m.ResultSuccess = true
-			m.ResultMsg = fmt.Sprintf("%s更新完成！", msg.UpdateType)
-		}
-		return m, nil
 
 	case CountdownTickMsg:
 		if m.State == ViewMenu && m.Cfg.Config.AutoUpdate && !m.AutoUpdateCancelled {
@@ -168,7 +117,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.State = ViewUpdating
 				m.ProgressMsg = "检查所有更新..."
 				m.AutoUpdateCancelled = true
-				return m, m.runAutoUpdate()
+				return m, m.sendCommand(controller.Command{Type: controller.CmdAutoUpdate})
 			}
 			return m, countdownTick()
 		}
@@ -205,4 +154,114 @@ func (m Model) View() string {
 		return m.renderResult()
 	}
 	return ""
+}
+
+// handleControllerEvent handles events from the controller
+func (m Model) handleControllerEvent(evt controller.Event) (tea.Model, tea.Cmd) {
+	switch evt.Type {
+	case controller.EvtProgressUpdate:
+		payload := evt.Payload.(controller.ProgressUpdatePayload)
+		m.ProgressMsg = payload.Message
+		m.IsDownloading = payload.IsDownload
+		m.DownloadSource = payload.Source
+		m.DownloadFileName = payload.FileName
+		m.Downloaded = payload.Downloaded
+		m.TotalSize = payload.TotalSize
+		m.DownloadSpeed = payload.Speed
+
+		cmd := m.Progress.SetPercent(payload.Percent)
+		return m, tea.Batch(cmd, listenForEvents(m.EventChan))
+
+	case controller.EvtUpdateSuccess:
+		payload := evt.Payload.(controller.UpdateCompletePayload)
+		m.Updating = false
+		m.State = ViewResult
+		m.ResultSuccess = true
+		m.ResultSkipped = payload.Skipped
+		m.ResultMsg = payload.Message
+
+		if payload.UpdatedComponents != nil {
+			m.AutoUpdateResult = &AutoUpdateDetails{
+				UpdatedComponents: payload.UpdatedComponents,
+				SkippedComponents: payload.SkippedComponents,
+				ComponentVersions: payload.ComponentVersions,
+			}
+		} else {
+			m.AutoUpdateResult = nil
+		}
+
+		return m, listenForEvents(m.EventChan)
+
+	case controller.EvtUpdateFailure:
+		payload := evt.Payload.(controller.UpdateCompletePayload)
+		m.Updating = false
+		m.State = ViewResult
+		m.ResultSuccess = false
+		m.ResultMsg = payload.Message
+		m.AutoUpdateResult = nil
+
+		return m, listenForEvents(m.EventChan)
+
+	case controller.EvtUpdateSkipped:
+		payload := evt.Payload.(controller.UpdateCompletePayload)
+		m.Updating = false
+		m.State = ViewResult
+		m.ResultSuccess = true
+		m.ResultSkipped = true
+		m.ResultMsg = payload.Message
+
+		if payload.UpdatedComponents != nil {
+			m.AutoUpdateResult = &AutoUpdateDetails{
+				UpdatedComponents: payload.UpdatedComponents,
+				SkippedComponents: payload.SkippedComponents,
+				ComponentVersions: payload.ComponentVersions,
+			}
+		} else {
+			m.AutoUpdateResult = nil
+		}
+
+		return m, listenForEvents(m.EventChan)
+
+	case controller.EvtConfigUpdated:
+		// Configuration updated successfully
+		// Update is already in cfg, just continue listening
+		return m, listenForEvents(m.EventChan)
+
+	case controller.EvtWizardComplete:
+		m.State = ViewMenu
+		return m, listenForEvents(m.EventChan)
+
+	case controller.EvtError:
+		payload := evt.Payload.(controller.ErrorPayload)
+		m.Err = payload.Error
+		return m, listenForEvents(m.EventChan)
+	}
+
+	return m, listenForEvents(m.EventChan)
+}
+
+// sendCommand sends a command to the controller
+func (m Model) sendCommand(cmd controller.Command) tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case m.CommandChan <- cmd:
+		default:
+			// Channel full, command dropped
+		}
+		return nil
+	}
+}
+
+// listenForEvents listens for events from the controller
+func listenForEvents(eventChan <-chan controller.Event) tea.Cmd {
+	return func() tea.Msg {
+		return <-eventChan
+	}
+}
+
+// countdownTick 倒计时命令
+func countdownTick() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return CountdownTickMsg{}
+	})
 }

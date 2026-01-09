@@ -118,14 +118,14 @@ func (m Model) renderMenu() string {
 		icon string
 		text string
 	}{
-		{termcolor.GetFallbackIcon("⚡", "⟳"), "自动更新"},      // ⚡ → ⟳ (循环箭头)
-		{termcolor.GetFallbackIcon("📚", "≡"), "词库更新"},      // 📚 → ≡ (三横线，像书页)
-		{termcolor.GetFallbackIcon("📦", "▢"), "方案更新"},      // 📦 → ▢ (空心方块)
-		{termcolor.GetFallbackIcon("🤖", "◈"), "模型更新"},      // 🤖 → ◈ (菱形)
-		{termcolor.GetFallbackIcon("⚙️", "⚙"), "查看配置"},      // ⚙️ → ⚙ (齿轮符号)
+		{termcolor.GetFallbackIcon("⚡", "⟳"), "自动更新"},                                        // ⚡ → ⟳ (循环箭头)
+		{termcolor.GetFallbackIcon("📚", "≡"), "词库更新"},                                        // 📚 → ≡ (三横线，像书页)
+		{termcolor.GetFallbackIcon("📦", "▢"), "方案更新"},                                        // 📦 → ▢ (空心方块)
+		{termcolor.GetFallbackIcon("🤖", "◈"), "模型更新"},                                        // 🤖 → ◈ (菱形)
+		{termcolor.GetFallbackIcon("⚙️", "⚙"), "查看配置"},                                       // ⚙️ → ⚙ (齿轮符号)
 		{termcolor.GetFallbackIcon("🎨", "◐"), "切换主题 (" + m.ThemeManager.CurrentName() + ")"}, // 🎨 → ◐ (半圆)
-		{termcolor.GetFallbackIcon("🧭", "◎"), "设置向导"},      // 🧭 → ◎ (双圆)
-		{termcolor.GetFallbackIcon("🚪", "×"), "退出程序"},      // 🚪 → × (叉号)
+		{termcolor.GetFallbackIcon("🧭", "◎"), "设置向导"},                                        // 🧭 → ◎ (双圆)
+		{termcolor.GetFallbackIcon("🚪", "×"), "退出程序"},                                        // 🚪 → × (叉号)
 	}
 
 	for i, item := range menuItems {

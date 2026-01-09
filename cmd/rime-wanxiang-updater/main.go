@@ -9,7 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"rime-wanxiang-updater/internal/config"
+	"rime-wanxiang-updater/internal/controller"
 	"rime-wanxiang-updater/internal/termcolor"
+	"rime-wanxiang-updater/internal/theme"
 	"rime-wanxiang-updater/internal/ui"
 	"rime-wanxiang-updater/internal/version"
 )
@@ -117,8 +119,39 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 初始化主题管理器
+	themeMgr := theme.NewManager()
+
+	// 从配置加载主题设置
+	if cfg.Config.ThemeAdaptive {
+		light := cfg.Config.ThemeLight
+		dark := cfg.Config.ThemeDark
+		if light == "" {
+			light = "cyberpunk-light"
+		}
+		if dark == "" {
+			dark = "cyberpunk"
+		}
+		themeMgr.SetAdaptiveTheme(light, dark)
+	} else if cfg.Config.ThemeFixed != "" {
+		themeMgr.SetTheme(cfg.Config.ThemeFixed)
+	}
+
+	// 创建通信通道
+	commandChan := make(chan controller.Command, 10)
+	eventChan := make(chan controller.Event, 100)
+
+	// 创建控制器
+	ctrl := controller.NewController(cfg, commandChan, eventChan)
+
+	// 在后台启动控制器
+	go ctrl.Run()
+
+	// 创建 UI 模型
+	model := ui.NewModel(cfg, themeMgr, commandChan, eventChan)
+
 	// 创建 Bubble Tea 程序
-	p := tea.NewProgram(ui.NewModel(cfg))
+	p := tea.NewProgram(model)
 
 	// 运行程序
 	if _, err := p.Run(); err != nil {
@@ -131,6 +164,9 @@ func main() {
 		fmt.Println(errorStyle.Render("⚠ RUNTIME ERROR: " + err.Error()))
 		os.Exit(1)
 	}
+
+	// 停止控制器
+	ctrl.Stop()
 
 	// 退出消息
 	exitStyle := lipgloss.NewStyle().

@@ -10,15 +10,15 @@ import (
 // Styles 主题化样式集合
 type Styles struct {
 	// 颜色
-	Primary     lipgloss.Color
-	Secondary   lipgloss.Color
-	Accent      lipgloss.Color
-	Success     lipgloss.Color
-	Warning     lipgloss.Color
-	Error       lipgloss.Color
-	Muted       lipgloss.Color
-	Background  lipgloss.Color
-	Foreground  lipgloss.Color
+	Primary    lipgloss.Color
+	Secondary  lipgloss.Color
+	Accent     lipgloss.Color
+	Success    lipgloss.Color
+	Warning    lipgloss.Color
+	Error      lipgloss.Color
+	Muted      lipgloss.Color
+	Background lipgloss.Color
+	Foreground lipgloss.Color
 
 	// 样式
 	Logo               lipgloss.Style

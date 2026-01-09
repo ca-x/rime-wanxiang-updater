@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
+	"rime-wanxiang-updater/internal/controller"
 	"rime-wanxiang-updater/internal/types"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,12 +16,16 @@ func (m Model) handleWizardInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case WizardSchemeType:
 		switch msg.String() {
 		case "1":
-			m.Cfg.Config.SchemeType = "base"
 			m.SchemeChoice = "base"
 			m.WizardStep = WizardDownloadSource
-			return m, nil
+			return m, m.sendCommand(controller.Command{
+				Type: controller.CmdWizardSetScheme,
+				Payload: controller.WizardSchemePayload{
+					SchemeType: "base",
+					Variant:    "",
+				},
+			})
 		case "2":
-			m.Cfg.Config.SchemeType = "pro"
 			m.WizardStep = WizardSchemeVariant
 			return m, nil
 		case "q", "ctrl+c":
@@ -35,7 +40,13 @@ func (m Model) handleWizardInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if variant, ok := types.SchemeMap[key]; ok {
 			m.SchemeChoice = variant
 			m.WizardStep = WizardDownloadSource
-			return m, nil
+			return m, m.sendCommand(controller.Command{
+				Type: controller.CmdWizardSetScheme,
+				Payload: controller.WizardSchemePayload{
+					SchemeType: "pro",
+					Variant:    variant,
+				},
+			})
 		}
 
 	case WizardDownloadSource:
@@ -55,25 +66,16 @@ func (m Model) handleWizardInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // completeWizard 完成向导
 func (m Model) completeWizard() (tea.Model, tea.Cmd) {
-	m.Cfg.Config.UseMirror = m.MirrorChoice
+	// Send mirror choice first
+	m.sendCommand(controller.Command{
+		Type:    controller.CmdWizardSetMirror,
+		Payload: m.MirrorChoice,
+	})
 
-	schemeFile, dictFile, err := m.Cfg.GetActualFilenames(m.SchemeChoice)
-	if err != nil {
-		m.Err = err
-		return m, nil
-	}
-
-	m.Cfg.Config.SchemeFile = schemeFile
-	m.Cfg.Config.DictFile = dictFile
-
-	if err := m.Cfg.SaveConfig(); err != nil {
-		m.Err = err
-		return m, nil
-	}
-
-	m.WizardStep = WizardComplete
-	m.State = ViewMenu
-	return m, nil
+	// Then send wizard complete command
+	return m, m.sendCommand(controller.Command{
+		Type: controller.CmdWizardComplete,
+	})
 }
 
 // handleMenuInput 处理菜单输入
@@ -87,20 +89,24 @@ func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "1":
 		m.State = ViewUpdating
+		m.Updating = true
 		m.ProgressMsg = "检查所有更新..."
-		return m, m.runAutoUpdate()
+		return m, m.sendCommand(controller.Command{Type: controller.CmdAutoUpdate})
 	case "2":
 		m.State = ViewUpdating
+		m.Updating = true
 		m.ProgressMsg = "检查词库更新..."
-		return m, m.runDictUpdate()
+		return m, m.sendCommand(controller.Command{Type: controller.CmdUpdateDict})
 	case "3":
 		m.State = ViewUpdating
+		m.Updating = true
 		m.ProgressMsg = "检查方案更新..."
-		return m, m.runSchemeUpdate()
+		return m, m.sendCommand(controller.Command{Type: controller.CmdUpdateScheme})
 	case "4":
 		m.State = ViewUpdating
+		m.Updating = true
 		m.ProgressMsg = "检查模型更新..."
-		return m, m.runModelUpdate()
+		return m, m.sendCommand(controller.Command{Type: controller.CmdUpdateModel})
 	case "5":
 		m.State = ViewConfig
 		return m, nil
@@ -127,20 +133,24 @@ func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch m.MenuChoice {
 		case 0:
 			m.State = ViewUpdating
+			m.Updating = true
 			m.ProgressMsg = "检查所有更新..."
-			return m, m.runAutoUpdate()
+			return m, m.sendCommand(controller.Command{Type: controller.CmdAutoUpdate})
 		case 1:
 			m.State = ViewUpdating
+			m.Updating = true
 			m.ProgressMsg = "检查词库更新..."
-			return m, m.runDictUpdate()
+			return m, m.sendCommand(controller.Command{Type: controller.CmdUpdateDict})
 		case 2:
 			m.State = ViewUpdating
+			m.Updating = true
 			m.ProgressMsg = "检查方案更新..."
-			return m, m.runSchemeUpdate()
+			return m, m.sendCommand(controller.Command{Type: controller.CmdUpdateScheme})
 		case 3:
 			m.State = ViewUpdating
+			m.Updating = true
 			m.ProgressMsg = "检查模型更新..."
-			return m, m.runModelUpdate()
+			return m, m.sendCommand(controller.Command{Type: controller.CmdUpdateModel})
 		case 4:
 			m.State = ViewConfig
 			return m, nil
@@ -542,5 +552,3 @@ func (m Model) applyFcitxConflictChoice() (tea.Model, tea.Cmd) {
 	m.State = ViewConfig
 	return m, nil
 }
-
-

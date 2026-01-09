@@ -387,7 +387,7 @@ func RenderCheckList(title string, items []string, isUpdated bool, versions map[
 	}
 
 	// 渲染标题
-	b.WriteString(titleStyle.Render(title + ":") + "\n")
+	b.WriteString(titleStyle.Render(title+":") + "\n")
 
 	// 将中文组件名映射到英文
 	componentMap := map[string]string{

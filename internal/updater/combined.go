@@ -83,9 +83,9 @@ func (c *CombinedUpdater) RunAll() error {
 
 // UpdateResult 更新结果
 type UpdateResult struct {
-	UpdatedComponents []string            // 已更新的组件
-	SkippedComponents []string            // 跳过的组件（已是最新版本）
-	ComponentVersions map[string]string   // 组件版本信息（组件名 -> 版本号）
+	UpdatedComponents []string          // 已更新的组件
+	SkippedComponents []string          // 跳过的组件（已是最新版本）
+	ComponentVersions map[string]string // 组件版本信息（组件名 -> 版本号）
 }
 
 // RunAllWithProgress 执行所有更新并报告进度

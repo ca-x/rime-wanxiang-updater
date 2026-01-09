@@ -165,10 +165,10 @@ func createDefaultConfig() *types.Config {
 		FcitxConflictPrompt: true, // 默认每次都提示
 		PreUpdateHook:       "",
 		PostUpdateHook:      "",
-		ThemeAdaptive:       true,             // 默认启用自适应主题
+		ThemeAdaptive:       true,              // 默认启用自适应主题
 		ThemeLight:          "cyberpunk-light", // 默认浅色主题
 		ThemeDark:           "cyberpunk",       // 默认深色主题
-		ThemeFixed:          "",               // 固定主题为空
+		ThemeFixed:          "",                // 固定主题为空
 	}
 }
 

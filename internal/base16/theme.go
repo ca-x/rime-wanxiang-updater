@@ -26,25 +26,25 @@ type Theme struct {
 	Brown   lipgloss.Color
 
 	// 预定义样式
-	Title      lipgloss.Style
-	Subtitle   lipgloss.Style
-	Text       lipgloss.Style
-	Muted      lipgloss.Style
-	Keyword    lipgloss.Style
-	String     lipgloss.Style
-	Number     lipgloss.Style
-	Function   lipgloss.Style
-	Variable   lipgloss.Style
-	Comment_   lipgloss.Style
-	Error      lipgloss.Style
-	Success    lipgloss.Style
-	Warning    lipgloss.Style
-	Info       lipgloss.Style
-	Highlight  lipgloss.Style
-	Selected   lipgloss.Style
-	Border     lipgloss.Style
-	StatusBar  lipgloss.Style
-	StatusKey  lipgloss.Style
+	Title     lipgloss.Style
+	Subtitle  lipgloss.Style
+	Text      lipgloss.Style
+	Muted     lipgloss.Style
+	Keyword   lipgloss.Style
+	String    lipgloss.Style
+	Number    lipgloss.Style
+	Function  lipgloss.Style
+	Variable  lipgloss.Style
+	Comment_  lipgloss.Style
+	Error     lipgloss.Style
+	Success   lipgloss.Style
+	Warning   lipgloss.Style
+	Info      lipgloss.Style
+	Highlight lipgloss.Style
+	Selected  lipgloss.Style
+	Border    lipgloss.Style
+	StatusBar lipgloss.Style
+	StatusKey lipgloss.Style
 }
 
 // NewTheme 从配色方案创建主题
@@ -167,19 +167,19 @@ type AdaptiveTheme struct {
 	Brown   lipgloss.AdaptiveColor
 
 	// 预定义样式
-	Title      lipgloss.Style
-	Subtitle   lipgloss.Style
-	Text       lipgloss.Style
-	Muted      lipgloss.Style
-	Error      lipgloss.Style
-	Success    lipgloss.Style
-	Warning    lipgloss.Style
-	Info       lipgloss.Style
-	Highlight  lipgloss.Style
-	Selected   lipgloss.Style
-	Border     lipgloss.Style
-	StatusBar  lipgloss.Style
-	StatusKey  lipgloss.Style
+	Title     lipgloss.Style
+	Subtitle  lipgloss.Style
+	Text      lipgloss.Style
+	Muted     lipgloss.Style
+	Error     lipgloss.Style
+	Success   lipgloss.Style
+	Warning   lipgloss.Style
+	Info      lipgloss.Style
+	Highlight lipgloss.Style
+	Selected  lipgloss.Style
+	Border    lipgloss.Style
+	StatusBar lipgloss.Style
+	StatusKey lipgloss.Style
 }
 
 // NewAdaptiveTheme 创建自适应主题
