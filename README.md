@@ -155,9 +155,9 @@ chmod +x rime-wanxiang-updater
 
 配置文件位置：
 
-- **Windows**: `%APPDATA%\rime-wanxiang-updater\config.json`
-- **macOS**: `~/Library/Application Support/rime-wanxiang-updater/config.json`
-- **Linux**: `~/.config/rime-wanxiang-updater/config.json`
+- **Windows**: `%APPDATA%\rime-updater\config.json`
+- **macOS**: `~/Library/Application Support/rime-updater/config.json`
+- **Linux**: `~/.config/rime-updater/config.json`
 
 配置示例：
 
