@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"rime-wanxiang-updater/internal/config"
 	"rime-wanxiang-updater/internal/detector"
@@ -89,6 +90,10 @@ type Model struct {
 
 	// Rime 安装检测
 	rimeInstallStatus detector.InstallationStatus // Rime 安装状态
+
+	// 自动更新倒计时相关
+	autoUpdateCountdown  int  // 自动更新倒计时（秒）
+	autoUpdateCancelled  bool // 是否已取消自动更新
 }
 
 // NewModel 创建新模型
@@ -106,17 +111,28 @@ func NewModel(cfg *config.Manager) Model {
 	// 检测 Rime 安装状态
 	rimeStatus := detector.CheckRimeInstallation()
 
+	// 从配置中读取倒计时值，如果配置中没有或为0，使用默认值5秒
+	countdown := cfg.Config.AutoUpdateCountdown
+	if countdown <= 0 {
+		countdown = 5
+	}
+
 	return Model{
-		cfg:               cfg,
-		state:             state,
-		wizardStep:        wizardStep,
-		progress:          p,
-		rimeInstallStatus: rimeStatus,
+		cfg:                 cfg,
+		state:               state,
+		wizardStep:          wizardStep,
+		progress:            p,
+		rimeInstallStatus:   rimeStatus,
+		autoUpdateCountdown: countdown, // 使用配置中的倒计时值
 	}
 }
 
 // Init 初始化
 func (m Model) Init() tea.Cmd {
+	// 如果在主菜单且开启了自动更新，启动倒计时
+	if m.state == ViewMenu && m.cfg.Config.AutoUpdate {
+		return countdownTick()
+	}
 	return nil
 }
 
@@ -147,6 +163,10 @@ type AutoUpdateDetails struct {
 	SkippedComponents []string          // 跳过的组件（已是最新版本）
 	ComponentVersions map[string]string // 组件版本信息（组件名 -> 版本号）
 }
+
+// CountdownTickMsg 倒计时消息
+type CountdownTickMsg struct{}
+
 
 // Update 更新模型
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -245,6 +265,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resultMsg = fmt.Sprintf("%s更新完成！", msg.updateType)
 		}
 		return m, nil
+
+	case CountdownTickMsg:
+		// 只在主菜单且开启自动更新且未取消时处理倒计时
+		if m.state == ViewMenu && m.cfg.Config.AutoUpdate && !m.autoUpdateCancelled {
+			m.autoUpdateCountdown--
+			if m.autoUpdateCountdown <= 0 {
+				// 倒计时结束，启动自动更新
+				m.state = ViewUpdating
+				m.progressMsg = "检查所有更新..."
+				// 标记为已取消，防止返回主菜单后再次触发
+				m.autoUpdateCancelled = true
+				return m, m.runAutoUpdate()
+			}
+			// 继续倒计时
+			return m, countdownTick()
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -323,6 +360,13 @@ func (m Model) completeWizard() (tea.Model, tea.Cmd) {
 // handleMenuInput 处理菜单输入
 func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "esc":
+		// ESC 键取消自动更新倒计时（仅在倒计时进行中时生效）
+		if m.cfg.Config.AutoUpdate && !m.autoUpdateCancelled && m.autoUpdateCountdown > 0 {
+			m.autoUpdateCancelled = true
+			return m, nil
+		}
+		return m, nil
 	case "1":
 		m.state = ViewUpdating
 		m.progressMsg = "检查所有更新..."
@@ -405,7 +449,14 @@ func (m Model) handleConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "down", "j":
 		// 可编辑的配置项数量（不包括 Engine 和排除文件）
-		maxChoice := 3 // UseMirror, ProxyEnabled, AutoUpdate
+		maxChoice := 2 // UseMirror, AutoUpdate
+
+		// 如果启用了自动更新，添加倒计时配置
+		if m.cfg.Config.AutoUpdate {
+			maxChoice++ // AutoUpdateCountdown
+		}
+
+		maxChoice++ // ProxyEnabled
 
 		// Linux 平台添加 fcitx 兼容性配置
 		if runtime.GOOS == "linux" {
@@ -438,7 +489,14 @@ func (m Model) handleConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // startConfigEdit 开始编辑配置
 func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
-	configItems := []string{"use_mirror", "auto_update", "proxy_enabled"}
+	configItems := []string{"use_mirror", "auto_update"}
+
+	// 如果启用了自动更新，添加倒计时配置
+	if m.cfg.Config.AutoUpdate {
+		configItems = append(configItems, "auto_update_countdown")
+	}
+
+	configItems = append(configItems, "proxy_enabled")
 
 	// Linux 平台添加 fcitx 兼容性配置
 	if runtime.GOOS == "linux" {
@@ -485,6 +543,8 @@ func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 			} else {
 				m.editingValue = "false"
 			}
+		case "auto_update_countdown":
+			m.editingValue = fmt.Sprintf("%d", m.cfg.Config.AutoUpdateCountdown)
 		case "proxy_enabled":
 			if m.cfg.Config.ProxyEnabled {
 				m.editingValue = "true"
@@ -573,7 +633,26 @@ func (m Model) saveConfigEdit() (tea.Model, tea.Cmd) {
 	case "use_mirror":
 		m.cfg.Config.UseMirror = m.editingValue == "true"
 	case "auto_update":
+		oldValue := m.cfg.Config.AutoUpdate
 		m.cfg.Config.AutoUpdate = m.editingValue == "true"
+		// 如果从启用变为禁用，重置倒计时取消状态
+		if oldValue && !m.cfg.Config.AutoUpdate {
+			m.autoUpdateCancelled = false
+		}
+	case "auto_update_countdown":
+		// 解析倒计时值
+		var countdown int
+		if _, err := fmt.Sscanf(m.editingValue, "%d", &countdown); err == nil {
+			// 限制倒计时范围在 1-60 秒之间
+			if countdown < 1 {
+				countdown = 1
+			} else if countdown > 60 {
+				countdown = 60
+			}
+			m.cfg.Config.AutoUpdateCountdown = countdown
+			// 更新当前倒计时值
+			m.autoUpdateCountdown = countdown
+		}
 	case "proxy_enabled":
 		m.cfg.Config.ProxyEnabled = m.editingValue == "true"
 	case "fcitx_compat":
@@ -753,6 +832,14 @@ func listenForProgress(progressChan chan UpdateMsg, completeChan chan UpdateComp
 		}
 	}
 }
+
+// countdownTick 倒计时命令
+func countdownTick() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return CountdownTickMsg{}
+	})
+}
+
 
 // runSchemeUpdate 运行方案更新
 func (m *Model) runSchemeUpdate() tea.Cmd {
@@ -1107,6 +1194,20 @@ func (m Model) renderMenu() string {
 	// 网格线
 	b.WriteString("\n" + gridStyle.Render(gridLine) + "\n")
 
+	// 如果开启了自动更新且未取消，显示倒计时提示
+	if m.cfg.Config.AutoUpdate && !m.autoUpdateCancelled && m.autoUpdateCountdown > 0 {
+		countdownStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFD700")).
+			Bold(true)
+		countdownText := fmt.Sprintf("⏱  自动更新将在 %d 秒后开始... (按 ESC 取消)", m.autoUpdateCountdown)
+		b.WriteString(countdownStyle.Render(countdownText) + "\n\n")
+	} else if m.cfg.Config.AutoUpdate && m.autoUpdateCancelled && m.autoUpdateCountdown > 0 {
+		// 只在倒计时还在进行中且被取消时才显示
+		cancelledStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#888888"))
+		b.WriteString(cancelledStyle.Render("✓ 已取消自动更新") + "\n\n")
+	}
+
 	// 提示
 	hint := hintStyle.Render("[>] Input: 1-7 | Navigate: J/K or Arrow Keys | [Q] Quit")
 	b.WriteString(hint + "\n\n")
@@ -1249,10 +1350,32 @@ func (m Model) renderConfig() string {
 		{"词库文件", m.cfg.Config.DictFile, false, -1},
 		{"使用镜像", fmt.Sprintf("%v", m.cfg.Config.UseMirror), true, 0},
 		{"自动更新", fmt.Sprintf("%v", m.cfg.Config.AutoUpdate), true, 1},
-		{"代理启用", fmt.Sprintf("%v", m.cfg.Config.ProxyEnabled), true, 2},
 	}
 
-	editIndex := 3
+	editIndex := 2
+
+	// 如果启用了自动更新，显示倒计时配置
+	if m.cfg.Config.AutoUpdate {
+		editableConfigs = append(editableConfigs,
+			struct {
+				key      string
+				value    string
+				editable bool
+				index    int
+			}{"自动更新倒计时(秒)", fmt.Sprintf("%d", m.cfg.Config.AutoUpdateCountdown), true, editIndex},
+		)
+		editIndex++
+	}
+
+	editableConfigs = append(editableConfigs,
+		struct {
+			key      string
+			value    string
+			editable bool
+			index    int
+		}{"代理启用", fmt.Sprintf("%v", m.cfg.Config.ProxyEnabled), true, editIndex},
+	)
+	editIndex++
 
 	// Linux 平台添加 fcitx 兼容性配置
 	if runtime.GOOS == "linux" {
@@ -1412,6 +1535,9 @@ func (m Model) renderConfigEdit() string {
 		configName = "自动更新"
 		inputHint = "Select: [1] Enable  [2] Disable | Arrow keys to toggle"
 		isBooleanField = true
+	case "auto_update_countdown":
+		configName = "自动更新倒计时(秒)"
+		inputHint = "输入倒计时秒数 (1-60秒)"
 	case "proxy_enabled":
 		configName = "代理启用"
 		inputHint = "Select: [1] Enable  [2] Disable | Arrow keys to toggle"

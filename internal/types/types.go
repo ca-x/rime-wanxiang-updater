@@ -37,6 +37,7 @@ type Config struct {
 	GithubToken         string   `json:"github_token"`
 	ExcludeFiles        []string `json:"exclude_files"`
 	AutoUpdate          bool     `json:"auto_update"`
+	AutoUpdateCountdown int      `json:"auto_update_countdown"` // 自动更新倒计时（秒）
 	ProxyEnabled        bool     `json:"proxy_enabled"`
 	ProxyType           string   `json:"proxy_type"`
 	ProxyAddress        string   `json:"proxy_address"`

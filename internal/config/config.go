@@ -155,6 +155,7 @@ func createDefaultConfig() *types.Config {
 		GithubToken:         "",
 		ExcludeFiles:        DefaultExcludePatterns, // 使用默认排除模式
 		AutoUpdate:          false,
+		AutoUpdateCountdown: 5, // 默认倒计时 5 秒
 		ProxyEnabled:        false,
 		ProxyType:           "http",
 		ProxyAddress:        "127.0.0.1:7890",
