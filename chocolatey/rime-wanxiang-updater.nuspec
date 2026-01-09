@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>rime-wanxiang-updater</id>
+    <version>$VERSION$</version>
+    <packageSourceUrl>https://github.com/czyt/rime-wanxiang-updater</packageSourceUrl>
+    <owners>czyt</owners>
+    <title>Rime 万象输入法更新工具</title>
+    <authors>czyt</authors>
+    <projectUrl>https://github.com/czyt/rime-wanxiang-updater</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/czyt/rime-wanxiang-updater/main/icon.png</iconUrl>
+    <licenseUrl>https://github.com/czyt/rime-wanxiang-updater/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/czyt/rime-wanxiang-updater</projectSourceUrl>
+    <docsUrl>https://github.com/czyt/rime-wanxiang-updater/blob/main/README.md</docsUrl>
+    <bugTrackerUrl>https://github.com/czyt/rime-wanxiang-updater/issues</bugTrackerUrl>
+    <tags>rime wanxiang input-method updater chinese tui cli</tags>
+    <summary>Rime 万象输入法自动更新工具，支持词库、方案、模型的自动检测和更新</summary>
+    <description>
+# Rime 万象输入法更新工具
+
+这是一个用 Go 语言编写的 Rime 万象输入法自动更新工具，支持 Windows、macOS 和 Linux 平台。
+
+## 特性
+
+- 🎨 精美的 TUI 界面: 使用 Bubble Tea 和 Lipgloss 构建的现代化终端界面
+- 🔄 自动更新: 支持词库、方案、模型的自动检测和更新
+- 🌍 跨平台支持: 原生支持 Windows、macOS 和 Linux
+- 🔌 代理支持: 支持 SOCKS5 和 HTTP 代理
+- 🪞 镜像加速: 支持 CNB 镜像，国内访问更快
+- 💾 断点续传: 下载支持断点续传，节省流量
+- 🔐 SHA256 校验: 确保文件完整性和安全性
+
+## 使用方法
+
+安装后，在命令行中运行：
+
+```
+rime-wanxiang-updater
+```
+
+程序将启动一个交互式终端界面，引导您完成配置和更新操作。
+
+## 注意事项
+
+- 需要先安装 Rime 输入法才能使用本工具
+- 首次运行时会进入配置向导
+- 支持自动检测 Rime 安装路径
+    </description>
+    <releaseNotes>https://github.com/czyt/rime-wanxiang-updater/releases/tag/v$VERSION$</releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

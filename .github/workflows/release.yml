@@ -116,3 +116,75 @@ jobs:
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
           commit_message: "Update to version ${{ steps.version.outputs.version }}"
           ssh_keyscan_types: rsa,ecdsa,ed25519
+
+  publish-chocolatey:
+    name: Publish to Chocolatey
+    needs: release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Download Windows AMD64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rime-wanxiang-updater-windows-amd64.exe
+          path: temp/
+
+      - name: Download Windows ARM64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rime-wanxiang-updater-windows-arm64.exe
+          path: temp/
+
+      - name: Calculate checksums
+        id: checksums
+        shell: pwsh
+        run: |
+          $amd64Hash = (Get-FileHash -Path "temp/rime-wanxiang-updater-windows-amd64.exe" -Algorithm SHA256).Hash
+          $arm64Hash = (Get-FileHash -Path "temp/rime-wanxiang-updater-windows-arm64.exe" -Algorithm SHA256).Hash
+          echo "checksum_amd64=$amd64Hash" >> $env:GITHUB_OUTPUT
+          echo "checksum_arm64=$arm64Hash" >> $env:GITHUB_OUTPUT
+
+      - name: Prepare Chocolatey package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $checksumAmd64 = "${{ steps.checksums.outputs.checksum_amd64 }}"
+          $checksumArm64 = "${{ steps.checksums.outputs.checksum_arm64 }}"
+
+          # 更新 nuspec 文件中的版本号
+          (Get-Content chocolatey/rime-wanxiang-updater.nuspec) `
+            -replace '\$VERSION\$', $version `
+            | Set-Content chocolatey/rime-wanxiang-updater.nuspec
+
+          # 更新 install 脚本中的版本号和校验和
+          (Get-Content chocolatey/tools/chocolateyInstall.ps1) `
+            -replace '\$VERSION\$', $version `
+            -replace '\$CHECKSUM64\$', $checksumAmd64 `
+            -replace '\$CHECKSUMARM64\$', $checksumArm64 `
+            | Set-Content chocolatey/tools/chocolateyInstall.ps1
+
+      - name: Setup Chocolatey
+        uses: crazy-max/ghaction-chocolatey@v3.4.0
+        with:
+          args: --version
+
+      - name: Build Chocolatey package
+        shell: pwsh
+        working-directory: chocolatey
+        run: choco pack
+
+      - name: Publish to Chocolatey
+        shell: pwsh
+        working-directory: chocolatey
+        run: |
+          choco push rime-wanxiang-updater.${{ steps.version.outputs.version }}.nupkg `
+            --source https://push.chocolatey.org/ `
+            --api-key ${{ secrets.CHOCOLATEY_API_KEY }}
+        continue-on-error: true
