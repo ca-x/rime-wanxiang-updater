@@ -7,7 +7,8 @@
 - 🎨 **精美的 TUI 界面**: 使用 Bubble Tea 和 Lipgloss 构建的现代化终端界面
 - 🔄 **自动更新**: 支持词库、方案、模型的自动检测和更新
 - 🌍 **跨平台支持**: 原生支持 Windows、macOS 和 Linux
-- 🚀 **自动化发布**: GitHub Actions 自动构建多平台二进制文件
+- 📦 **多种安装方式**: 支持 AUR (Arch Linux)、Chocolatey (Windows)、Homebrew (macOS)
+- 🚀 **自动化发布**: GitHub Actions 自动构建多平台二进制文件并发布到包管理器
 - 🔌 **代理支持**: 支持 SOCKS5 和 HTTP 代理
 - 🪞 **镜像加速**: 支持 CNB 镜像，国内访问更快
 - 💾 **断点续传**: 下载支持断点续传，节省流量
@@ -73,6 +74,23 @@ makepkg -si
 ```
 
 AUR 包页面：https://aur.archlinux.org/packages/rime-wanxiang-updater
+
+### Windows (Chocolatey)
+
+```powershell
+# 安装
+choco install rime-wanxiang-updater
+
+# 升级到最新版本
+choco upgrade rime-wanxiang-updater
+
+# 卸载
+choco uninstall rime-wanxiang-updater
+```
+
+> **注意**: 首次使用 Chocolatey 需要先[安装 Chocolatey](https://chocolatey.org/install)
+
+Chocolatey 包页面：https://community.chocolatey.org/packages/rime-wanxiang-updater
 
 ### macOS (Homebrew)
 
@@ -224,7 +242,9 @@ git push origin v1.0.0
 GitHub Actions 会自动：
 1. 构建所有平台的二进制文件
 2. 创建 GitHub Release
-3. 上传编译好的文件
+3. 发布到 AUR (Arch Linux)
+4. 发布到 Chocolatey (Windows)
+5. 上传编译好的文件
 
 ## 🏗️ 架构设计
 
