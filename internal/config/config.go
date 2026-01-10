@@ -207,6 +207,33 @@ func (m *Manager) GetEngineDisplayName() string {
 	return strings.Join(m.Config.InstalledEngines, "+")
 }
 
+// GetSchemeDisplayName 获取方案的友好显示名称
+func (m *Manager) GetSchemeDisplayName() string {
+	schemeType := m.Config.SchemeType
+
+	if schemeType == "base" {
+		return "基础版"
+	}
+
+	// pro 方案的映射
+	proSchemeNames := map[string]string{
+		"moqi":    "墨奇码",
+		"flypy":   "小鹤双拼",
+		"zrm":     "自然码",
+		"tiger":   "虎码",
+		"wubi":    "五笔",
+		"hanxin":  "汉信",
+		"shouyou": "手语",
+	}
+
+	if name, ok := proSchemeNames[schemeType]; ok {
+		return "增强版-" + name
+	}
+
+	// 未知方案类型，返回原始值
+	return schemeType
+}
+
 // AddExcludePattern 添加排除模式
 func (m *Manager) AddExcludePattern(pattern string) error {
 	// 验证模式

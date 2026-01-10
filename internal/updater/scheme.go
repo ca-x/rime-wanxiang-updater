@@ -53,6 +53,14 @@ func (s *SchemeUpdater) GetStatus() (*types.UpdateStatus, error) {
 	}
 
 	if localRecord != nil {
+		// 检查文件名是否匹配，如果不匹配说明方案已切换
+		if localRecord.Name != s.Config.Config.SchemeFile {
+			status.LocalVersion = fmt.Sprintf("已切换方案 (从 %s)", localRecord.Name)
+			status.Message = fmt.Sprintf("检测到可用版本: %s (方案已切换，需要更新)", remoteInfo.Tag)
+			status.NeedsUpdate = true
+			return status, nil
+		}
+
 		status.LocalVersion = localRecord.Tag
 		status.LocalTime = localRecord.UpdateTime
 		status.NeedsUpdate = remoteInfo.UpdateTime.After(localRecord.UpdateTime)
@@ -63,8 +71,14 @@ func (s *SchemeUpdater) GetStatus() (*types.UpdateStatus, error) {
 			status.Message = fmt.Sprintf("已是最新版本 (当前版本: %s)", remoteInfo.Tag)
 		}
 	} else {
-		status.LocalVersion = "未安装"
-		status.Message = fmt.Sprintf("检测到可用版本: %s", remoteInfo.Tag)
+		// 无版本记录但关键文件存在，说明记录丢失或首次管理已有安装
+		if keyFileExists {
+			status.LocalVersion = "未知版本"
+			status.Message = fmt.Sprintf("检测到可用版本: %s (无版本记录，将重新安装)", remoteInfo.Tag)
+		} else {
+			status.LocalVersion = "未安装"
+			status.Message = fmt.Sprintf("检测到可用版本: %s", remoteInfo.Tag)
+		}
 	}
 
 	return status, nil

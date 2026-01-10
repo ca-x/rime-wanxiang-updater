@@ -285,7 +285,7 @@ func RenderStatusBar(version, engine, source string) string {
 }
 
 // RenderStatusBarThemed 渲染底部状态栏（主题化版本）
-func RenderStatusBarThemed(s *Styles, version, engine, source string) string {
+func RenderStatusBarThemed(s *Styles, version, engine, source, scheme string) string {
 	const width = 65
 
 	versionKey := s.StatusKey.Render("版本")
@@ -297,12 +297,16 @@ func RenderStatusBarThemed(s *Styles, version, engine, source string) string {
 	sourceKey := s.StatusKey.Render("下载源")
 	sourceVal := s.StatusValue.Render(source)
 
+	schemeKey := s.StatusKey.Render("方案")
+	schemeVal := s.StatusValue.Render(scheme)
+
 	// 拼接状态栏
 	bar := lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		versionKey, versionVal, " ",
 		engineKey, engineVal, " ",
-		sourceKey, sourceVal,
+		sourceKey, sourceVal, " ",
+		schemeKey, schemeVal,
 	)
 
 	// 填充到固定宽度

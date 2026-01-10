@@ -164,6 +164,7 @@ func (m Model) renderMenu() string {
 			}
 			return "GitHub"
 		}(),
+		m.Cfg.GetSchemeDisplayName(),
 	)
 	b.WriteString(statusBar)
 
