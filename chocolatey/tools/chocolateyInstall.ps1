@@ -5,32 +5,21 @@ $toolsDir = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
 $version = '$VERSION$'
 
 # 根据系统架构选择正确的可执行文件
-$architecture = Get-ProcessorArchitecture
+$architecture = $env:PROCESSOR_ARCHITECTURE
 $exeName = switch ($architecture) {
-    'X64' { "rime-wanxiang-updater-windows-amd64.exe" }
+    'AMD64' { "rime-wanxiang-updater-windows-amd64.exe" }
     'ARM64' { "rime-wanxiang-updater-windows-arm64.exe" }
     default { "rime-wanxiang-updater-windows-amd64.exe" }
 }
 
-$packageArgs = @{
-    packageName    = $packageName
-    fileType       = 'EXE'
-    url64bit       = "https://github.com/czyt/rime-wanxiang-updater/releases/download/v$version/rime-wanxiang-updater-windows-amd64.exe"
-    urlARM64       = "https://github.com/czyt/rime-wanxiang-updater/releases/download/v$version/rime-wanxiang-updater-windows-arm64.exe"
-    checksum64     = '$CHECKSUM64$'
-    checksumARM64  = '$CHECKSUMARM64$'
-    checksumType   = 'sha256'
-    silentArgs     = ''
-    validExitCodes = @(0)
-}
-
-# 下载文件
+# 根据架构选择下载 URL 和校验和
 if ($architecture -eq 'ARM64') {
-    $url = $packageArgs.urlARM64
-    $checksum = $packageArgs.checksumARM64
+    $url = "https://github.com/czyt/rime-wanxiang-updater/releases/download/v$version/rime-wanxiang-updater-windows-arm64.exe"
+    $checksum = '$CHECKSUMARM64$'
 } else {
-    $url = $packageArgs.url64bit
-    $checksum = $packageArgs.checksum64
+    # 默认使用 AMD64 版本
+    $url = "https://github.com/czyt/rime-wanxiang-updater/releases/download/v$version/rime-wanxiang-updater-windows-amd64.exe"
+    $checksum = '$CHECKSUM64$'
 }
 
 # 下载并安装
@@ -38,8 +27,8 @@ $fileLocation = Join-Path $toolsDir $exeName
 Get-ChocolateyWebFile `
     -PackageName $packageName `
     -FileFullPath $fileLocation `
-    -Url64bit $url `
-    -Checksum64 $checksum `
+    -Url $url `
+    -Checksum $checksum `
     -ChecksumType 'sha256'
 
 # 创建 shim (让可执行文件在 PATH 中可用)
