@@ -40,8 +40,13 @@ func checkRimeInstallation() InstallationStatus {
 	// 全部未安装，返回安装建议
 	message := "⚠️  未检测到任何 Rime 输入法引擎\n\n" +
 		"支持的引擎：\n" +
-		"  • 鼠须管 (Squirrel): brew install --cask squirrel\n" +
-		"  • 小企鹅 (FCITX5): https://github.com/fcitx-contrib/fcitx5-macos-installer\n\n" +
+		"  • 鼠须管 (Squirrel):\n" +
+		"    brew install --cask squirrel\n\n" +
+		"  • 小企鹅 (FCITX5):\n" +
+		"    - 拼音版: brew install --cask tinypkg/tap/fcitx5-pinyin\n" +
+		"    - 中州韵版: brew install --cask tinypkg/tap/fcitx5-rime\n" +
+		"    - 原装版: brew install --cask tinypkg/tap/fcitx5\n" +
+		"    - 安装器: https://github.com/fcitx-contrib/fcitx5-macos-installer\n\n" +
 		"提示：程序仍可正常运行，但需要先安装至少一个引擎才能使用更新的配置。"
 
 	return InstallationStatus{
