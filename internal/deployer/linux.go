@@ -167,3 +167,75 @@ func (d *linuxDeployer) restartIBus() error {
 	cmd := exec.Command("ibus-daemon", "-drx")
 	return cmd.Run()
 }
+
+// DeployToAllEnginesWithProgress 部署到所有已安装的引擎，并报告进度
+func (d *linuxDeployer) DeployToAllEnginesWithProgress(progressFunc func(engine string, index, total int)) error {
+	if d.config == nil {
+		return d.Deploy() // 回退到主引擎部署
+	}
+
+	// 获取要部署的引擎列表
+	deployEngines := d.config.UpdateEngines
+	if len(deployEngines) == 0 {
+		// 未配置：默认部署所有已安装的引擎
+		deployEngines = d.config.InstalledEngines
+	}
+
+	if len(deployEngines) == 0 {
+		return d.Deploy() // 回退到主引擎部署
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("无法获取用户目录: %w", err)
+	}
+
+	var errors []string
+	total := len(deployEngines)
+
+	// 为每个引擎执行部署
+	for i, engine := range deployEngines {
+		if progressFunc != nil {
+			progressFunc(engine, i+1, total)
+		}
+
+		// 根据引擎确定数据目录并部署
+		var rimeDir string
+		switch engine {
+		case "fcitx5":
+			rimeDir = filepath.Join(homeDir, ".local/share/fcitx5/rime")
+			if _, err := os.Stat(rimeDir); os.IsNotExist(err) {
+				rimeDir = filepath.Join(homeDir, ".config/fcitx5/rime")
+			}
+			// 尝试 qdbus6 部署
+			if err := d.deployWithQdbus6(); err != nil {
+				// 失败则尝试 rime_deployer
+				if err := d.runRimeDeployer(rimeDir); err != nil {
+					// 最后尝试重启
+					if err := d.restartFcitx5(); err != nil {
+						errors = append(errors, fmt.Sprintf("%s: 部署失败", engine))
+					}
+				}
+			}
+		case "ibus":
+			rimeDir = filepath.Join(homeDir, ".config/ibus/rime")
+			if err := d.runRimeDeployer(rimeDir); err != nil {
+				if err := d.restartIBus(); err != nil {
+					errors = append(errors, fmt.Sprintf("%s: 部署失败", engine))
+				}
+			}
+		case "fcitx":
+			rimeDir = filepath.Join(homeDir, ".config/fcitx/rime")
+			if err := d.runRimeDeployer(rimeDir); err != nil {
+				errors = append(errors, fmt.Sprintf("%s: 部署失败", engine))
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("部分引擎部署失败: %v", errors)
+	}
+
+	return nil
+}
+

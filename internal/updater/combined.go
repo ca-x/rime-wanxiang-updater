@@ -200,9 +200,50 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 
 	// 如果没有错误，执行部署（会重启服务）
 	if len(errors) == 0 {
-		progress("部署", "正在部署...", 0.90, "", "", 0, 0, 0, false)
-		if err := c.SchemeUpdater.Deploy(); err != nil {
-			errors = append(errors, fmt.Sprintf("部署失败: %v", err))
+		// 获取要部署的引擎列表
+		deployEngines := c.Config.Config.UpdateEngines
+		if len(deployEngines) == 0 {
+			// 未配置：默认部署所有已安装的引擎
+			deployEngines = c.Config.Config.InstalledEngines
+		}
+
+		// 检查是否有多个引擎需要部署
+		if len(deployEngines) > 1 {
+			// 定义接口用于类型断言
+			type multiEngineDeployer interface {
+				DeployToAllEnginesWithProgress(progressFunc func(engine string, index, total int)) error
+			}
+
+			if med, ok := c.SchemeUpdater.Deployer.(multiEngineDeployer); ok {
+				// 支持多引擎进度回调的 deployer
+				err := med.DeployToAllEnginesWithProgress(func(engine string, index, total int) {
+					deployMsg := fmt.Sprintf("正在部署到 %s (%d/%d)...", engine, index, total)
+					deployPercent := 0.90 + float64(index-1)/float64(total)*0.09 // 0.90-0.99
+					progress("部署", deployMsg, deployPercent, "", "", 0, 0, 0, false)
+				})
+				if err != nil {
+					errors = append(errors, fmt.Sprintf("部署失败: %v", err))
+				}
+			} else {
+				// 回退到单引擎部署
+				engineName := c.Config.GetEngineDisplayName()
+				progress("部署", fmt.Sprintf("正在部署到 %s...", engineName), 0.90, "", "", 0, 0, 0, false)
+				if err := c.SchemeUpdater.Deploy(); err != nil {
+					errors = append(errors, fmt.Sprintf("部署失败: %v", err))
+				}
+			}
+		} else {
+			// 单引擎部署
+			engineName := "输入法"
+			if len(deployEngines) == 1 {
+				engineName = deployEngines[0]
+			} else if c.Config.Config.PrimaryEngine != "" {
+				engineName = c.Config.Config.PrimaryEngine
+			}
+			progress("部署", fmt.Sprintf("正在部署到 %s...", engineName), 0.90, "", "", 0, 0, 0, false)
+			if err := c.SchemeUpdater.Deploy(); err != nil {
+				errors = append(errors, fmt.Sprintf("部署失败: %v", err))
+			}
 		}
 	} else {
 		// 即使有错误，也尝试重启服务，让用户能继续使用输入法

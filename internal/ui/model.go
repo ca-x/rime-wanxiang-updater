@@ -96,6 +96,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleFcitxConflictInput(msg)
 		case ViewThemeList:
 			return m.handleThemeListInput(msg)
+		case ViewEngineSelector:
+			return m.handleEngineSelectorInput(msg)
+		case ViewEnginePrompt:
+			return m.handleEnginePromptInput(msg)
 		case ViewResult:
 			return m.handleResultInput(msg)
 		case ViewUpdating:
@@ -150,6 +154,10 @@ func (m Model) View() string {
 		return m.renderFcitxConflict()
 	case ViewThemeList:
 		return m.renderThemeList()
+	case ViewEngineSelector:
+		return m.renderEngineSelector()
+	case ViewEnginePrompt:
+		return m.renderEnginePrompt()
 	case ViewResult:
 		return m.renderResult()
 	}

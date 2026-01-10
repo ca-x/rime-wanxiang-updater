@@ -34,10 +34,17 @@ var macOSEngines = map[string]EngineInfo{
 
 // DetectInstalledEngines 检测已安装的引擎
 func DetectInstalledEngines() []string {
+	homeDir, _ := os.UserHomeDir()
 	var installed []string
 
 	for _, engine := range macOSEngines {
-		if _, err := os.Stat(engine.AppPath); err == nil {
+		// 同时检查系统目录和用户目录
+		systemPath := engine.AppPath
+		userPath := filepath.Join(homeDir, engine.AppPath)
+
+		if _, err := os.Stat(systemPath); err == nil {
+			installed = append(installed, engine.Name)
+		} else if _, err := os.Stat(userPath); err == nil {
 			installed = append(installed, engine.Name)
 		}
 	}

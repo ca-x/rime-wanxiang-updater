@@ -184,7 +184,14 @@ func (m Model) handleConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.ConfigChoice--
 		}
 	case "down", "j":
-		maxChoice := 2 // UseMirror, AutoUpdate
+		maxChoice := 0
+
+		// 如果有多个引擎，添加"管理更新引擎"选项
+		if len(m.Cfg.Config.InstalledEngines) > 1 {
+			maxChoice++ // ManageUpdateEngines
+		}
+
+		maxChoice += 2 // UseMirror, AutoUpdate
 
 		if m.Cfg.Config.AutoUpdate {
 			maxChoice++ // AutoUpdateCountdown
@@ -225,7 +232,14 @@ func (m Model) handleConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // startConfigEdit 开始编辑配置
 func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
-	configItems := []string{"use_mirror", "auto_update"}
+	configItems := []string{}
+
+	// 如果有多个引擎，添加"管理更新引擎"选项
+	if len(m.Cfg.Config.InstalledEngines) > 1 {
+		configItems = append(configItems, "manage_update_engines")
+	}
+
+	configItems = append(configItems, "use_mirror", "auto_update")
 
 	if m.Cfg.Config.AutoUpdate {
 		configItems = append(configItems, "auto_update_countdown")
@@ -257,6 +271,13 @@ func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 
 	if m.ConfigChoice < len(configItems) {
 		selectedKey := configItems[m.ConfigChoice]
+
+		// 管理更新引擎
+		if selectedKey == "manage_update_engines" {
+			m.InitEngineSelector()
+			m.State = ViewEngineSelector
+			return m, nil
+		}
 
 		if selectedKey == "exclude_file_manager" {
 			m.InitExcludeView()
@@ -551,4 +572,104 @@ func (m Model) applyFcitxConflictChoice() (tea.Model, tea.Cmd) {
 
 	m.State = ViewConfig
 	return m, nil
+}
+
+// handleEngineSelectorInput 处理引擎选择输入
+func (m Model) handleEngineSelectorInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q", "esc":
+		m.State = ViewConfig
+		return m, nil
+	case "ctrl+c":
+		return m, tea.Quit
+	case "up", "k":
+		if m.EngineCursor > 0 {
+			m.EngineCursor--
+		}
+	case "down", "j":
+		if m.EngineCursor < len(m.EngineList)-1 {
+			m.EngineCursor++
+		}
+	case " ", "enter":
+		// 切换当前引擎的选中状态
+		if m.EngineCursor < len(m.EngineList) {
+			engine := m.EngineList[m.EngineCursor]
+			m.EngineSelections[engine] = !m.EngineSelections[engine]
+		}
+	case "s":
+		// 保存并返回
+		return m.saveEngineSelection()
+	}
+	return m, nil
+}
+
+// saveEngineSelection 保存引擎选择
+func (m Model) saveEngineSelection() (tea.Model, tea.Cmd) {
+	// 收集选中的引擎
+	var selectedEngines []string
+	for _, engine := range m.EngineList {
+		if m.EngineSelections[engine] {
+			selectedEngines = append(selectedEngines, engine)
+		}
+	}
+
+	// 更新配置
+	m.Cfg.Config.UpdateEngines = selectedEngines
+	if err := m.Cfg.SaveConfig(); err != nil {
+		m.Err = err
+		m.State = ViewConfig
+		return m, nil
+	}
+
+	m.State = ViewConfig
+	return m, nil
+}
+
+// handleEnginePromptInput 处理多引擎提示输入
+func (m Model) handleEnginePromptInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "1", "enter":
+		// 去配置
+		m.State = ViewConfig
+		return m, nil
+	case "2":
+		// 使用全部引擎（设置为空，表示使用所有已安装引擎）
+		m.Cfg.Config.UpdateEngines = m.Cfg.Config.InstalledEngines
+		if err := m.Cfg.SaveConfig(); err != nil {
+			m.Err = err
+		}
+		m.State = ViewMenu
+		return m, nil
+	case "q", "esc":
+		m.State = ViewMenu
+		return m, nil
+	case "ctrl+c":
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+// InitEngineSelector 初始化引擎选择器
+func (m *Model) InitEngineSelector() {
+	// 初始化引擎列表
+	m.EngineList = make([]string, len(m.Cfg.Config.InstalledEngines))
+	copy(m.EngineList, m.Cfg.Config.InstalledEngines)
+
+	// 初始化选择状态
+	m.EngineSelections = make(map[string]bool)
+
+	// 如果已配置 UpdateEngines，则预选这些引擎
+	if len(m.Cfg.Config.UpdateEngines) > 0 {
+		for _, engine := range m.Cfg.Config.UpdateEngines {
+			m.EngineSelections[engine] = true
+		}
+	} else {
+		// 如果未配置，默认全选
+		for _, engine := range m.EngineList {
+			m.EngineSelections[engine] = true
+		}
+	}
+
+	// 重置光标位置
+	m.EngineCursor = 0
 }

@@ -72,21 +72,23 @@ func (m *Manager) loadOrCreateConfig() (*types.Config, error) {
 	}
 
 	// 配置迁移：从旧的 Engine 字段迁移到新的多引擎结构
-	if config.Engine != "" && len(config.InstalledEngines) == 0 {
-		// 旧配置格式，需要迁移
-		config.InstalledEngines = DetectInstalledEngines()
+	if config.Engine != "" {
 		config.PrimaryEngine = config.Engine
-		// 保留 Engine 字段为空，表示已迁移
 		config.Engine = ""
-		// 保存迁移后的配置
+		// 迁移后保存
 		if err := m.saveConfig(&config); err != nil {
-			// 迁移失败也不影响使用
 			fmt.Printf("警告：配置迁移失败: %v\n", err)
 		}
 	}
 
-	// 验证配置：确保 PrimaryEngine 在 InstalledEngines 中
-	if config.PrimaryEngine != "" && len(config.InstalledEngines) > 0 {
+	// 每次启动都重新检测已安装的引擎
+	config.InstalledEngines = DetectInstalledEngines()
+
+	// 验证并清理用户配置
+	needsSave := false
+
+	// 验证 PrimaryEngine 是否仍然存在
+	if config.PrimaryEngine != "" {
 		found := false
 		for _, engine := range config.InstalledEngines {
 			if engine == config.PrimaryEngine {
@@ -95,16 +97,55 @@ func (m *Manager) loadOrCreateConfig() (*types.Config, error) {
 			}
 		}
 		if !found {
-			// 主引擎不在已安装列表中，使用第一个已安装的引擎
-			config.PrimaryEngine = config.InstalledEngines[0]
+			// 主引擎已不存在
+			if len(config.InstalledEngines) > 0 {
+				oldPrimary := config.PrimaryEngine
+				config.PrimaryEngine = config.InstalledEngines[0]
+				fmt.Printf("⚠️  主引擎 %s 未检测到，已切换到 %s\n", oldPrimary, config.PrimaryEngine)
+				needsSave = true
+			} else {
+				config.PrimaryEngine = ""
+				fmt.Println("⚠️  未检测到任何已安装的引擎")
+			}
 		}
 	}
 
-	// 如果配置为空，重新检测
-	if len(config.InstalledEngines) == 0 {
-		config.InstalledEngines = DetectInstalledEngines()
-		if len(config.InstalledEngines) > 0 {
-			config.PrimaryEngine = config.InstalledEngines[0]
+	// 如果没有主引擎但有已安装的引擎，设置第一个为主引擎
+	if config.PrimaryEngine == "" && len(config.InstalledEngines) > 0 {
+		config.PrimaryEngine = config.InstalledEngines[0]
+		needsSave = true
+	}
+
+	// 清理 UpdateEngines 中已卸载的引擎
+	if len(config.UpdateEngines) > 0 {
+		var validUpdateEngines []string
+		for _, engine := range config.UpdateEngines {
+			for _, installed := range config.InstalledEngines {
+				if engine == installed {
+					validUpdateEngines = append(validUpdateEngines, engine)
+					break
+				}
+			}
+		}
+		if len(validUpdateEngines) != len(config.UpdateEngines) {
+			config.UpdateEngines = validUpdateEngines
+			needsSave = true
+		}
+	}
+
+	// 修复 UpdateEngines：如果为空且有多个引擎，默认设置为所有已安装引擎
+	if len(config.UpdateEngines) == 0 && len(config.InstalledEngines) > 1 {
+		config.UpdateEngines = make([]string, len(config.InstalledEngines))
+		copy(config.UpdateEngines, config.InstalledEngines)
+		needsSave = true
+	}
+
+	// 保存更新后的配置
+	if needsSave {
+		if err := m.saveConfig(&config); err != nil {
+			fmt.Printf("警告：保存配置失败: %v\n", err)
+		} else {
+			fmt.Println("✓ 配置已自动更新")
 		}
 	}
 

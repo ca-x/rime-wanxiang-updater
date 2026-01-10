@@ -17,13 +17,15 @@ const (
 	ViewMenu
 	ViewUpdating
 	ViewConfig
-	ViewConfigEdit    // 配置编辑
-	ViewResult        // 显示更新结果
-	ViewExcludeList   // 排除文件列表
-	ViewExcludeEdit   // 编辑排除模式
-	ViewExcludeAdd    // 添加排除模式
-	ViewFcitxConflict // Fcitx 目录冲突对话框
-	ViewThemeList     // 主题列表
+	ViewConfigEdit      // 配置编辑
+	ViewResult          // 显示更新结果
+	ViewExcludeList     // 排除文件列表
+	ViewExcludeEdit     // 编辑排除模式
+	ViewExcludeAdd      // 添加排除模式
+	ViewFcitxConflict   // Fcitx 目录冲突对话框
+	ViewThemeList       // 主题列表
+	ViewEngineSelector  // 引擎选择界面
+	ViewEnginePrompt    // 多引擎未配置提示对话框
 )
 
 // WizardStep 向导步骤
@@ -107,6 +109,11 @@ type Model struct {
 	// Theme selector UI state
 	ThemeListChoice int
 	ThemeList       []string
+
+	// Engine selector UI state
+	EngineSelections map[string]bool // 引擎名 -> 是否选中
+	EngineCursor     int             // 当前光标位置
+	EngineList       []string        // 引擎列表（按顺序）
 
 	// Error display
 	Err error

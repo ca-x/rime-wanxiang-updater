@@ -187,7 +187,7 @@ func (s *SchemeUpdater) applyUpdate(temp, target string, progress types.Progress
 		}
 	}
 
-	// 解压文件
+	// 解压文件到主引擎目录
 	progress("正在解压方案文件...", 0.9, "", "", 0, 0, 0, false)
 	if err := s.ExtractZip(temp, s.Config.GetExtractPath()); err != nil {
 		return fmt.Errorf("解压失败: %w", err)
@@ -197,6 +197,15 @@ func (s *SchemeUpdater) applyUpdate(temp, target string, progress types.Progress
 	if s.Config.Config.UseMirror {
 		if err := fileutil.HandleCNBNestedDir(s.Config.GetExtractPath(), s.Config.Config.SchemeFile); err != nil {
 			return fmt.Errorf("处理嵌套目录失败: %w", err)
+		}
+	}
+
+	// 同步到其他引擎目录
+	if len(s.Config.Config.InstalledEngines) > 1 {
+		progress("正在同步到其他引擎...", 0.92, "", "", 0, 0, 0, false)
+		if err := s.syncToOtherEngines(); err != nil {
+			// 只记录错误，不返回失败
+			progress(fmt.Sprintf("同步到其他引擎失败: %v", err), 0.92, "", "", 0, 0, 0, false)
 		}
 	}
 
@@ -234,6 +243,61 @@ func (s *SchemeUpdater) applyUpdate(temp, target string, progress types.Progress
 	}
 
 	progress("更新完成！", 1.0, "", "", 0, 0, 0, false)
+	return nil
+}
+
+// syncToOtherEngines 同步文件到其他引擎目录
+func (s *SchemeUpdater) syncToOtherEngines() error {
+	// 检查是否配置了要更新的引擎列表
+	updateEngines := s.Config.Config.UpdateEngines
+	if len(updateEngines) == 0 {
+		// 未配置：默认更新所有已安装的引擎
+		updateEngines = s.Config.Config.InstalledEngines
+	}
+
+	// 如果只有一个引擎需要更新，跳过同步
+	if len(updateEngines) <= 1 {
+		return nil
+	}
+
+	primaryEngine := s.Config.Config.PrimaryEngine
+	if primaryEngine == "" && len(updateEngines) > 0 {
+		primaryEngine = updateEngines[0]
+	}
+
+	sourceDir := s.Config.GetExtractPath()
+	var errors []string
+
+	// 遍历用户选择要更新的引擎
+	for _, engine := range updateEngines {
+		// 跳过主引擎（已经解压到主引擎目录）
+		if engine == primaryEngine {
+			continue
+		}
+
+		// 获取目标引擎的数据目录
+		targetDir := config.GetEngineDataDir(engine)
+		if targetDir == "" {
+			errors = append(errors, fmt.Sprintf("无法获取引擎 %s 的数据目录", engine))
+			continue
+		}
+
+		// 确保目标目录存在
+		if err := os.MkdirAll(targetDir, 0755); err != nil {
+			errors = append(errors, fmt.Sprintf("创建引擎 %s 目录失败: %v", engine, err))
+			continue
+		}
+
+		// 复制文件（排除 build 目录和用户配置）
+		if err := fileutil.SyncDirectory(sourceDir, targetDir, s.Config.Config.ExcludeFiles); err != nil {
+			errors = append(errors, fmt.Sprintf("同步到引擎 %s 失败: %v", engine, err))
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("部分引擎同步失败: %v", errors)
+	}
+
 	return nil
 }
 

@@ -93,3 +93,40 @@ func (d *darwinDeployer) DeployToAllEngines() error {
 
 	return nil
 }
+
+// DeployToAllEnginesWithProgress 部署到所有已安装的引擎，并报告进度
+func (d *darwinDeployer) DeployToAllEnginesWithProgress(progressFunc func(engine string, index, total int)) error {
+	if d.config == nil {
+		return d.Deploy() // 回退到部署主引擎
+	}
+
+	// 获取要部署的引擎列表
+	deployEngines := d.config.UpdateEngines
+	if len(deployEngines) == 0 {
+		// 未配置：默认部署所有已安装的引擎
+		deployEngines = d.config.InstalledEngines
+	}
+
+	if len(deployEngines) == 0 {
+		return d.Deploy() // 回退到部署主引擎
+	}
+
+	var errors []string
+	total := len(deployEngines)
+
+	for i, engine := range deployEngines {
+		if progressFunc != nil {
+			progressFunc(engine, i+1, total)
+		}
+
+		if err := d.deployToEngine(engine); err != nil {
+			errors = append(errors, fmt.Sprintf("%s: %v", engine, err))
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("部分引擎部署失败: %s", strings.Join(errors, "; "))
+	}
+
+	return nil
+}

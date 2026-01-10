@@ -157,7 +157,7 @@ func (m Model) renderMenu() string {
 	statusBar := RenderStatusBarThemed(
 		m.Styles,
 		version.GetVersion(),
-		m.Cfg.Config.Engine,
+		m.Cfg.GetEngineDisplayName(),
 		func() string {
 			if m.Cfg.Config.UseMirror {
 				return "CNB镜像"
@@ -263,15 +263,68 @@ func (m Model) renderConfig() string {
 		editable bool
 		index    int
 	}{
-		{"引擎", m.Cfg.Config.Engine, false, -1},
-		{"方案类型", m.Cfg.Config.SchemeType, false, -1},
-		{"方案文件", m.Cfg.Config.SchemeFile, false, -1},
-		{"词库文件", m.Cfg.Config.DictFile, false, -1},
-		{"使用镜像", fmt.Sprintf("%v", m.Cfg.Config.UseMirror), true, 0},
-		{"自动更新", fmt.Sprintf("%v", m.Cfg.Config.AutoUpdate), true, 1},
+		{"引擎", m.Cfg.GetEngineDisplayName(), false, -1},
 	}
 
-	editIndex := 2
+	// 如果检测到多个引擎，显示"管理更新引擎"选项
+	if len(m.Cfg.Config.InstalledEngines) > 1 {
+		updateEnginesDisplay := "全部引擎"
+		if len(m.Cfg.Config.UpdateEngines) > 0 {
+			updateEnginesDisplay = strings.Join(m.Cfg.Config.UpdateEngines, "、")
+		}
+		editableConfigs = append(editableConfigs,
+			struct {
+				key      string
+				value    string
+				editable bool
+				index    int
+			}{"⚙ 管理更新引擎", updateEnginesDisplay, true, 0},
+		)
+	}
+
+	editableConfigs = append(editableConfigs,
+		struct {
+			key      string
+			value    string
+			editable bool
+			index    int
+		}{"方案类型", m.Cfg.Config.SchemeType, false, -1},
+		struct {
+			key      string
+			value    string
+			editable bool
+			index    int
+		}{"方案文件", m.Cfg.Config.SchemeFile, false, -1},
+		struct {
+			key      string
+			value    string
+			editable bool
+			index    int
+		}{"词库文件", m.Cfg.Config.DictFile, false, -1},
+	)
+
+	// 计算可编辑项的起始索引
+	editIndex := 0
+	if len(m.Cfg.Config.InstalledEngines) > 1 {
+		editIndex = 1 // 管理更新引擎已经占用了索引 0
+	}
+
+	editableConfigs = append(editableConfigs,
+		struct {
+			key      string
+			value    string
+			editable bool
+			index    int
+		}{"使用镜像", fmt.Sprintf("%v", m.Cfg.Config.UseMirror), true, editIndex},
+		struct {
+			key      string
+			value    string
+			editable bool
+			index    int
+		}{"自动更新", fmt.Sprintf("%v", m.Cfg.Config.AutoUpdate), true, editIndex + 1},
+	)
+
+	editIndex += 2
 
 	if m.Cfg.Config.AutoUpdate {
 		editableConfigs = append(editableConfigs,
@@ -729,4 +782,84 @@ func (m Model) renderFcitxConflict() string {
 	b.WriteString(hint)
 
 	return containerStyle.Render(b.String())
+}
+
+// renderEngineSelector 渲染引擎选择界面
+func (m Model) renderEngineSelector() string {
+	var b strings.Builder
+
+	logo := logoStyle.Render(asciiLogo)
+	b.WriteString(logo + "\n")
+
+	header := RenderHeader(version.GetVersion())
+	b.WriteString(header + "\n")
+
+	b.WriteString(m.Styles.ScanLine.Render(scanLine) + "\n\n")
+
+	title := RenderGradientTitle("⚙ 选择要更新的引擎 ⚙")
+	b.WriteString(title + "\n\n")
+
+	info := m.Styles.InfoBox.Render("使用 空格 或 回车 切换选择，按 S 保存")
+	b.WriteString(info + "\n\n")
+
+	// 显示引擎列表
+	for i, engine := range m.EngineList {
+		checked := " "
+		if m.EngineSelections[engine] {
+			checked = "✓"
+		}
+
+		cursor := "  "
+		if i == m.EngineCursor {
+			cursor = "► "
+		}
+
+		style := m.Styles.MenuItem
+		if i == m.EngineCursor {
+			style = m.Styles.SelectedMenuItem
+		}
+
+		line := fmt.Sprintf("%s[%s] %s", cursor, checked, engine)
+		b.WriteString(style.Render(line) + "\n")
+	}
+
+	b.WriteString("\n" + m.Styles.Grid.Render(gridLine) + "\n")
+	hint := m.Styles.Hint.Render("[Space/Enter] Toggle | [S] Save | [Q/ESC] Cancel")
+	b.WriteString(hint)
+
+	return m.Styles.Container.Render(b.String())
+}
+
+// renderEnginePrompt 渲染多引擎未配置提示
+func (m Model) renderEnginePrompt() string {
+	var b strings.Builder
+
+	logo := logoStyle.Render(asciiLogo)
+	b.WriteString(logo + "\n")
+
+	header := RenderHeader(version.GetVersion())
+	b.WriteString(header + "\n")
+
+	b.WriteString(m.Styles.ScanLine.Render(scanLine) + "\n\n")
+
+	title := RenderGradientTitle("⚡ 多引擎检测 ⚡")
+	b.WriteString(title + "\n\n")
+
+	// 显示检测到的引擎
+	engineList := strings.Join(m.Cfg.Config.InstalledEngines, "、")
+	message := fmt.Sprintf("检测到您安装了多个输入法引擎：%s", engineList)
+	info := m.Styles.InfoBox.Render(message)
+	b.WriteString(info + "\n\n")
+
+	question := m.Styles.InfoBox.Render("您希望如何处理更新？")
+	b.WriteString(question + "\n\n")
+
+	b.WriteString(m.Styles.MenuItem.Render("  [1] ► 进入设置选择要更新的引擎") + "\n")
+	b.WriteString(m.Styles.MenuItem.Render("  [2] ► 更新所有已安装的引擎") + "\n\n")
+
+	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n")
+	hint := m.Styles.Hint.Render("[>] Input: 1-2 | [Q/ESC] Cancel")
+	b.WriteString(hint)
+
+	return m.Styles.Container.Render(b.String())
 }

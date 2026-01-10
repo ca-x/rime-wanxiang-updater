@@ -85,3 +85,13 @@ func (d *windowsDeployer) Deploy() error {
 	deployer := filepath.Join(filepath.Dir(d.weaselServer), "WeaselDeployer.exe")
 	return exec.Command(deployer, "/deploy").Run()
 }
+
+// DeployToAllEnginesWithProgress 部署到所有已安装的引擎，并报告进度
+// Windows 通常只有一个引擎（小狼毫），但保留此方法以保持接口一致性
+func (d *windowsDeployer) DeployToAllEnginesWithProgress(progressFunc func(engine string, index, total int)) error {
+	if progressFunc != nil {
+		progressFunc("小狼毫", 1, 1)
+	}
+	return d.Deploy()
+}
+
