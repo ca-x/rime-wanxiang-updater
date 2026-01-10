@@ -15,6 +15,7 @@
 go.work
 
 # Build output
+/cmd/rime-wanxiang-updater/rime-wanxiang-updater
 /rime-wanxiang-updater
 /dist/
 /build/
