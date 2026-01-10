@@ -71,6 +71,43 @@ func (m *Manager) loadOrCreateConfig() (*types.Config, error) {
 		return createDefaultConfig(), nil
 	}
 
+	// 配置迁移：从旧的 Engine 字段迁移到新的多引擎结构
+	if config.Engine != "" && len(config.InstalledEngines) == 0 {
+		// 旧配置格式，需要迁移
+		config.InstalledEngines = DetectInstalledEngines()
+		config.PrimaryEngine = config.Engine
+		// 保留 Engine 字段为空，表示已迁移
+		config.Engine = ""
+		// 保存迁移后的配置
+		if err := m.saveConfig(&config); err != nil {
+			// 迁移失败也不影响使用
+			fmt.Printf("警告：配置迁移失败: %v\n", err)
+		}
+	}
+
+	// 验证配置：确保 PrimaryEngine 在 InstalledEngines 中
+	if config.PrimaryEngine != "" && len(config.InstalledEngines) > 0 {
+		found := false
+		for _, engine := range config.InstalledEngines {
+			if engine == config.PrimaryEngine {
+				found = true
+				break
+			}
+		}
+		if !found {
+			// 主引擎不在已安装列表中，使用第一个已安装的引擎
+			config.PrimaryEngine = config.InstalledEngines[0]
+		}
+	}
+
+	// 如果配置为空，重新检测
+	if len(config.InstalledEngines) == 0 {
+		config.InstalledEngines = DetectInstalledEngines()
+		if len(config.InstalledEngines) > 0 {
+			config.PrimaryEngine = config.InstalledEngines[0]
+		}
+	}
+
 	return &config, nil
 }
 
@@ -89,6 +126,44 @@ func (m *Manager) saveConfig(config *types.Config) error {
 // SaveConfig 保存当前配置
 func (m *Manager) SaveConfig() error {
 	return m.saveConfig(m.Config)
+}
+
+// RedetectEngines 重新检测已安装的引擎
+func (m *Manager) RedetectEngines() error {
+	m.Config.InstalledEngines = DetectInstalledEngines()
+
+	// 如果主引擎不在新的已安装列表中，重新设置
+	if m.Config.PrimaryEngine != "" {
+		found := false
+		for _, engine := range m.Config.InstalledEngines {
+			if engine == m.Config.PrimaryEngine {
+				found = true
+				break
+			}
+		}
+		if !found && len(m.Config.InstalledEngines) > 0 {
+			m.Config.PrimaryEngine = m.Config.InstalledEngines[0]
+		}
+	} else if len(m.Config.InstalledEngines) > 0 {
+		m.Config.PrimaryEngine = m.Config.InstalledEngines[0]
+	}
+
+	return m.SaveConfig()
+}
+
+// GetEngineDisplayName 获取引擎显示名称
+// 多引擎时用 + 连接
+func (m *Manager) GetEngineDisplayName() string {
+	if len(m.Config.InstalledEngines) == 0 {
+		return m.Config.PrimaryEngine
+	}
+
+	if len(m.Config.InstalledEngines) == 1 {
+		return m.Config.InstalledEngines[0]
+	}
+
+	// 多个引擎，用 + 连接
+	return strings.Join(m.Config.InstalledEngines, "+")
 }
 
 // AddExcludePattern 添加排除模式
@@ -146,8 +221,16 @@ func (m *Manager) GetExcludePatternDescriptions() ([]string, error) {
 
 // createDefaultConfig 创建默认配置
 func createDefaultConfig() *types.Config {
+	// 检测已安装的引擎
+	installedEngines := DetectInstalledEngines()
+	var primaryEngine string
+	if len(installedEngines) > 0 {
+		primaryEngine = installedEngines[0]
+	}
+
 	return &types.Config{
-		Engine:              detectEngine(),
+		InstalledEngines:    installedEngines,
+		PrimaryEngine:       primaryEngine,
 		SchemeType:          "",
 		SchemeFile:          "",
 		DictFile:            "",
@@ -172,16 +255,14 @@ func createDefaultConfig() *types.Config {
 	}
 }
 
-// detectEngine 检测输入法引擎
+// detectEngine 检测输入法引擎（已弃用，保留向后兼容）
+// 使用 DetectInstalledEngines() 替代
 func detectEngine() string {
-	switch runtime.GOOS {
-	case "windows":
-		return "小狼毫"
-	case "darwin":
-		return "鼠须管"
-	default:
-		return "fcitx5"
+	installed := DetectInstalledEngines()
+	if len(installed) > 0 {
+		return installed[0]
 	}
+	return ""
 }
 
 // getConfigPath 获取配置文件路径

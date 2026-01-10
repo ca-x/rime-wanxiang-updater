@@ -29,7 +29,11 @@ var SchemeMap = map[string]string{
 
 // Config 配置结构
 type Config struct {
-	Engine              string   `json:"engine"`
+	// 引擎配置 - 支持多引擎
+	InstalledEngines []string `json:"installed_engines"` // 检测到的所有已安装引擎
+	PrimaryEngine    string   `json:"primary_engine"`    // 用户选择的主引擎
+	Engine           string   `json:"engine,omitempty"`  // 已弃用：保留用于配置迁移
+
 	SchemeType          string   `json:"scheme_type"`
 	SchemeFile          string   `json:"scheme_file"`
 	DictFile            string   `json:"dict_file"`
