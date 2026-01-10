@@ -151,7 +151,8 @@ func main() {
 	model := ui.NewModel(cfg, themeMgr, commandChan, eventChan)
 
 	// 创建 Bubble Tea 程序
-	p := tea.NewProgram(model)
+	// 使用 WithAltScreen 避免启动序列输出影响终端焦点
+	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	// 运行程序
 	if _, err := p.Run(); err != nil {

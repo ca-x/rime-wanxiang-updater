@@ -80,8 +80,18 @@ func (m Model) completeWizard() (tea.Model, tea.Cmd) {
 
 // handleMenuInput 处理菜单输入
 func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// 如果自动更新倒计时正在进行，用户按了任何键（除了 ESC 和退出键），自动取消倒计时
+	if m.Cfg.Config.AutoUpdate && !m.AutoUpdateCancelled && m.AutoUpdateCountdown > 0 {
+		key := msg.String()
+		// 只有 ESC 保持原有行为，其他任何操作都取消倒计时
+		if key != "esc" {
+			m.AutoUpdateCancelled = true
+		}
+	}
+
 	switch msg.String() {
 	case "esc":
+		// ESC 的特殊处理保持不变
 		if m.Cfg.Config.AutoUpdate && !m.AutoUpdateCancelled && m.AutoUpdateCountdown > 0 {
 			m.AutoUpdateCancelled = true
 			return m, nil
