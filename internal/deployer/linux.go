@@ -72,7 +72,8 @@ func (d *linuxDeployer) getRimeDataDir() (string, error) {
 	}
 
 	for _, dir := range candidates {
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		// 使用 Lstat 避免跟随符号链接
+		if info, err := os.Lstat(dir); err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
 			return dir, nil
 		}
 	}
@@ -204,7 +205,8 @@ func (d *linuxDeployer) DeployToAllEnginesWithProgress(progressFunc func(engine 
 		switch engine {
 		case "fcitx5":
 			rimeDir = filepath.Join(homeDir, ".local/share/fcitx5/rime")
-			if _, err := os.Stat(rimeDir); os.IsNotExist(err) {
+			// 使用 Lstat 避免跟随符号链接
+			if info, err := os.Lstat(rimeDir); os.IsNotExist(err) || (err == nil && info.Mode()&os.ModeSymlink != 0) {
 				rimeDir = filepath.Join(homeDir, ".config/fcitx5/rime")
 			}
 			// 尝试 qdbus6 部署

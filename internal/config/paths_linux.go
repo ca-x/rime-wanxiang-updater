@@ -4,6 +4,7 @@ package config
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"rime-wanxiang-updater/internal/types"
@@ -13,6 +14,7 @@ import (
 type EngineInfo struct {
 	Name     string
 	DataDirs []string // 可能的数据目录（按优先级排序）
+	Commands []string // 可执行命令
 }
 
 // Linux 引擎定义
@@ -23,18 +25,21 @@ var linuxEngines = []EngineInfo{
 			".local/share/fcitx5/rime",
 			".config/fcitx5/rime",
 		},
+		Commands: []string{"fcitx5"},
 	},
 	{
 		Name: "ibus",
 		DataDirs: []string{
 			".config/ibus/rime",
 		},
+		Commands: []string{"ibus-daemon"},
 	},
 	{
 		Name: "fcitx",
 		DataDirs: []string{
 			".config/fcitx/rime",
 		},
+		Commands: []string{"fcitx"},
 	},
 }
 
@@ -45,9 +50,24 @@ func DetectInstalledEngines() []string {
 	var installed []string
 
 	for _, engine := range linuxEngines {
+		// 检查引擎命令是否存在
+		hasCommand := false
+		for _, cmd := range engine.Commands {
+			if _, err := exec.LookPath(cmd); err == nil {
+				hasCommand = true
+				break
+			}
+		}
+
+		// 只有命令存在时，才检查数据目录
+		if !hasCommand {
+			continue
+		}
+
 		for _, dataDir := range engine.DataDirs {
 			fullPath := filepath.Join(homeDir, dataDir)
-			if info, err := os.Stat(fullPath); err == nil && info.IsDir() {
+			// 使用 Lstat 避免跟随符号链接，确保检测到的是真实的引擎目录
+			if info, err := os.Lstat(fullPath); err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
 				installed = append(installed, engine.Name)
 				break // 找到一个目录就行，不需要检查其他目录
 			}
@@ -83,7 +103,8 @@ func getRimeUserDir(config *types.Config) string {
 			// 查找第一个存在的目录
 			for _, dataDir := range engineInfo.DataDirs {
 				fullPath := filepath.Join(homeDir, dataDir)
-				if info, err := os.Stat(fullPath); err == nil && info.IsDir() {
+				// 使用 Lstat 避免跟随符号链接
+				if info, err := os.Lstat(fullPath); err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
 					return fullPath
 				}
 			}
@@ -105,7 +126,8 @@ func GetEngineDataDir(engineName string) string {
 			// 返回第一个存在的目录
 			for _, dataDir := range engineInfo.DataDirs {
 				fullPath := filepath.Join(homeDir, dataDir)
-				if info, err := os.Stat(fullPath); err == nil && info.IsDir() {
+				// 使用 Lstat 避免跟随符号链接
+				if info, err := os.Lstat(fullPath); err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
 					return fullPath
 				}
 			}
@@ -145,7 +167,8 @@ func DetectInstallationPaths() map[string]string {
 	}
 
 	for _, path := range candidates {
-		if info, err := os.Stat(path); err == nil && info.IsDir() {
+		// 使用 Lstat 避免跟随符号链接
+		if info, err := os.Lstat(path); err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
 			detected["rime_user_dir"] = path
 			return detected
 		}

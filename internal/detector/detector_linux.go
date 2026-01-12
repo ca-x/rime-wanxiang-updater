@@ -49,7 +49,8 @@ func checkRimeInstallation() InstallationStatus {
 	for _, engine := range linuxEngines {
 		for _, dataDir := range engine.DataDirs {
 			fullPath := filepath.Join(homeDir, dataDir)
-			if info, err := os.Stat(fullPath); err == nil && info.IsDir() {
+			// 使用 Lstat 避免跟随符号链接，确保检测到的是真实的引擎目录
+			if info, err := os.Lstat(fullPath); err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
 				installed = true
 				break
 			}
