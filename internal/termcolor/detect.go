@@ -3,6 +3,7 @@ package termcolor
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -97,6 +98,13 @@ func detectFromEnv() Background {
 
 // detectFromOSC11 使用 OSC 11 转义序列查询终端背景色
 func detectFromOSC11() Background {
+	// Windows 上跳过 OSC 11 检测,避免干扰后续的键盘输入处理
+	// 这是因为 Windows 控制台的 stdin 读取行为与 Unix 不同,
+	// 可能导致 Bubbletea 无法正确接收第一次按键
+	if runtime.GOOS == "windows" {
+		return BackgroundUnknown
+	}
+
 	oldState, err := makeRaw()
 	if err != nil {
 		return BackgroundUnknown
