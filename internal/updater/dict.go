@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"rime-wanxiang-updater/internal/config"
 	"rime-wanxiang-updater/internal/fileutil"
@@ -160,7 +161,8 @@ func (d *DictUpdater) Run(progress types.ProgressFunc) error {
 
 	// 校验本地文件
 	progress("正在校验本地文件...", 0.1, "", "", 0, 0, 0, false)
-	if d.UpdateInfo.SHA256 != "" && d.CompareHash(d.UpdateInfo.SHA256, targetFile) {
+	localRecord := d.GetLocalRecord(recordPath)
+	if localRecord != nil && localRecord.SHA256 != "" && d.CompareHash(localRecord.SHA256, targetFile) {
 		progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
 		d.SaveRecord(recordPath, "dict_file", d.Config.Config.DictFile, d.UpdateInfo)
 		return nil
@@ -168,9 +170,15 @@ func (d *DictUpdater) Run(progress types.ProgressFunc) error {
 
 	// 下载文件
 	progress(fmt.Sprintf("准备从 %s 下载词库...", source), 0.15, "", "", 0, 0, 0, false)
-	tempFile := filepath.Join(d.Config.CacheDir, fmt.Sprintf("temp_dict_%s.zip", d.UpdateInfo.SHA256))
+	tempFile := filepath.Join(d.Config.CacheDir, fmt.Sprintf("temp_dict_%d.zip", time.Now().Unix()))
 	if err := d.DownloadFileWithValidation(d.UpdateInfo.URL, tempFile, d.Config.Config.DictFile, source, d.UpdateInfo.Size, progress); err != nil {
 		return fmt.Errorf("下载失败: %w", err)
+	}
+
+	// 计算下载文件的 SHA256
+	progress("正在计算文件校验和...", 0.65, "", "", 0, 0, 0, false)
+	if hash, err := fileutil.CalculateSHA256(tempFile); err == nil {
+		d.UpdateInfo.SHA256 = hash
 	}
 
 	// 清理旧文件

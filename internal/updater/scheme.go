@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"rime-wanxiang-updater/internal/config"
 	"rime-wanxiang-updater/internal/fileutil"
@@ -159,7 +160,8 @@ func (s *SchemeUpdater) Run(progress types.ProgressFunc) error {
 
 	// 校验本地文件
 	progress("正在校验本地文件...", 0.1, "", "", 0, 0, 0, false)
-	if s.UpdateInfo.SHA256 != "" && s.CompareHash(s.UpdateInfo.SHA256, targetFile) {
+	localRecord := s.GetLocalRecord(recordPath)
+	if localRecord != nil && localRecord.SHA256 != "" && s.CompareHash(localRecord.SHA256, targetFile) {
 		progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
 		s.SaveRecord(recordPath, "scheme_file", s.Config.Config.SchemeFile, s.UpdateInfo)
 		return nil
@@ -167,9 +169,15 @@ func (s *SchemeUpdater) Run(progress types.ProgressFunc) error {
 
 	// 下载文件
 	progress(fmt.Sprintf("准备从 %s 下载方案...", source), 0.15, "", "", 0, 0, 0, false)
-	tempFile := filepath.Join(s.Config.CacheDir, fmt.Sprintf("temp_scheme_%s.zip", s.UpdateInfo.SHA256))
+	tempFile := filepath.Join(s.Config.CacheDir, fmt.Sprintf("temp_scheme_%d.zip", time.Now().Unix()))
 	if err := s.DownloadFileWithValidation(s.UpdateInfo.URL, tempFile, s.Config.Config.SchemeFile, source, s.UpdateInfo.Size, progress); err != nil {
 		return fmt.Errorf("下载失败: %w", err)
+	}
+
+	// 计算下载文件的 SHA256
+	progress("正在计算文件校验和...", 0.65, "", "", 0, 0, 0, false)
+	if hash, err := fileutil.CalculateSHA256(tempFile); err == nil {
+		s.UpdateInfo.SHA256 = hash
 	}
 
 	// 清理旧文件

@@ -169,6 +169,9 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 			errors = append(errors, fmt.Sprintf("方案更新失败: %v", err))
 		} else {
 			result.UpdatedComponents = append(result.UpdatedComponents, "方案")
+			if c.SchemeUpdater.UpdateInfo != nil {
+				result.ComponentVersions["方案"] = c.SchemeUpdater.UpdateInfo.Tag
+			}
 		}
 	}
 
@@ -182,6 +185,9 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 			errors = append(errors, fmt.Sprintf("词库更新失败: %v", err))
 		} else {
 			result.UpdatedComponents = append(result.UpdatedComponents, "词库")
+			if c.DictUpdater.UpdateInfo != nil {
+				result.ComponentVersions["词库"] = c.DictUpdater.UpdateInfo.Tag
+			}
 		}
 	}
 
@@ -195,6 +201,9 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 			errors = append(errors, fmt.Sprintf("模型更新失败: %v", err))
 		} else {
 			result.UpdatedComponents = append(result.UpdatedComponents, "模型")
+			if c.ModelUpdater.UpdateInfo != nil {
+				result.ComponentVersions["模型"] = c.ModelUpdater.UpdateInfo.Tag
+			}
 		}
 	}
 

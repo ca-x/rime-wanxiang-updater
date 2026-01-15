@@ -508,15 +508,14 @@ func (m Model) renderConfig() string {
 	for _, cfg := range editableConfigs {
 		key := m.Styles.ConfigKey.Render(cfg.key + ":")
 		value := m.Styles.ConfigValue.Render(cfg.value)
-		line := "  ▸ " + key + " " + value
 
 		if cfg.editable && cfg.index == m.ConfigChoice {
-			line = m.Styles.SelectedMenuItem.Render("►" + line)
+			line := m.Styles.SelectedMenuItem.Render("►") + "  ▸ " + key + " " + value
+			configContent.WriteString(line + "\n")
 		} else {
-			line = m.Styles.MenuItem.Render(" " + line)
+			line := " " + "  ▸ " + key + " " + value
+			configContent.WriteString(line + "\n")
 		}
-
-		configContent.WriteString(line + "\n")
 	}
 
 	configBox := m.Styles.InfoBox.Render(configContent.String())

@@ -88,8 +88,8 @@ func NewStyles(t *base16.Theme) *Styles {
 
 	// 选中菜单项样式
 	s.SelectedMenuItem = lipgloss.NewStyle().
-		Foreground(s.Background).
-		Background(s.Secondary).
+		Foreground(t.Background).
+		Background(s.Primary).
 		Padding(0, 2).
 		Bold(true).
 		MarginLeft(2).
@@ -202,7 +202,7 @@ func NewStyles(t *base16.Theme) *Styles {
 		Padding(0, 1)
 
 	s.StatusKey = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FFFDF5")).
+		Foreground(s.Foreground).
 		Background(s.Secondary).
 		Padding(0, 1).
 		Bold(true)
