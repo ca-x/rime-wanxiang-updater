@@ -34,16 +34,18 @@ func SyncDirectory(sourceDir, targetDir string, excludePatterns []string) error 
 			return nil
 		}
 
-		// 检查是否应该排除
-		if shouldExclude(relPath, excludePatterns) {
+		// 目标路径
+		dstPath := filepath.Join(targetDir, relPath)
+
+		// 检查是否应该排除：仅在目标位置已存在时才跳过匹配排除模式的文件。
+		// 这确保首次安装时默认配置文件能被正确部署，
+		// 同时在后续更新时保留用户的自定义修改。
+		if shouldExclude(relPath, excludePatterns) && fileExistsAtPath(dstPath) {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-
-		// 目标路径
-		dstPath := filepath.Join(targetDir, relPath)
 
 		// 处理目录
 		if info.IsDir() {
@@ -87,4 +89,14 @@ func shouldExclude(relPath string, excludePatterns []string) bool {
 	}
 
 	return false
+}
+
+// fileExistsAtPath 检查文件或目录是否存在于指定路径
+// 返回 true 表示文件存在（或存在但无法访问），此时应保留用户文件不覆盖
+// 返回 false 表示文件确定不存在，可以安全部署新文件
+func fileExistsAtPath(path string) bool {
+	_, err := os.Stat(path)
+	// 只有当文件确定不存在时才返回 false
+	// 其他情况（包括存在但无权限访问）都返回 true，以保护用户文件
+	return !os.IsNotExist(err)
 }

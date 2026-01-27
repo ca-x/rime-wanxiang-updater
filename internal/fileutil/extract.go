@@ -27,12 +27,14 @@ func ExtractZip(src, dest string, excludeFiles []string) error {
 	}
 
 	for _, f := range r.File {
-		// 使用新的匹配函数
-		if config.MatchAny(f.Name, excludePatterns) {
+		fpath := filepath.Join(dest, f.Name)
+
+		// 对于非目录文件：仅在目标位置已存在时才跳过匹配排除模式的文件。
+		// 这确保首次安装时默认配置文件（如 .custom.yaml）能被正确部署，
+		// 同时在后续更新时保留用户的自定义修改。
+		if !f.FileInfo().IsDir() && config.MatchAny(f.Name, excludePatterns) && FileExists(fpath) {
 			continue
 		}
-
-		fpath := filepath.Join(dest, f.Name)
 
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {

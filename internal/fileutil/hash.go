@@ -25,9 +25,12 @@ func CalculateSHA256(filePath string) (string, error) {
 }
 
 // FileExists 检查文件是否存在
+// 返回 true 表示文件存在（或存在但无法访问），此时应保留用户文件不覆盖
+// 返回 false 表示文件确定不存在
 func FileExists(path string) bool {
 	_, err := os.Stat(path)
-	return err == nil
+	// 只有当文件确定不存在时才返回 false
+	return !os.IsNotExist(err)
 }
 
 // FormatBytes 格式化字节数为人类可读格式
