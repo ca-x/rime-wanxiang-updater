@@ -66,16 +66,17 @@ func (m Model) handleWizardInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // completeWizard 完成向导
 func (m Model) completeWizard() (tea.Model, tea.Cmd) {
-	// Send mirror choice first
-	m.sendCommand(controller.Command{
-		Type:    controller.CmdWizardSetMirror,
-		Payload: m.MirrorChoice,
-	})
-
-	// Then send wizard complete command
-	return m, m.sendCommand(controller.Command{
-		Type: controller.CmdWizardComplete,
-	})
+	// Send both commands: mirror choice first, then wizard complete
+	// Use tea.Sequence to ensure mirror is set before wizard complete runs
+	return m, tea.Sequence(
+		m.sendCommand(controller.Command{
+			Type:    controller.CmdWizardSetMirror,
+			Payload: m.MirrorChoice,
+		}),
+		m.sendCommand(controller.Command{
+			Type: controller.CmdWizardComplete,
+		}),
+	)
 }
 
 // handleMenuInput 处理菜单输入
