@@ -158,12 +158,13 @@ func (s *SchemeUpdater) Run(progress types.ProgressFunc) error {
 	recordPath := s.Config.GetSchemeRecordPath()
 	targetFile := filepath.Join(s.Config.CacheDir, s.Config.Config.SchemeFile)
 
-	// 校验本地文件
+	// 校验本地文件：只有当版本未变化且缓存文件哈希匹配时才跳过下载
 	progress("正在校验本地文件...", 0.1, "", "", 0, 0, 0, false)
 	localRecord := s.GetLocalRecord(recordPath)
-	if localRecord != nil && localRecord.SHA256 != "" && s.CompareHash(localRecord.SHA256, targetFile) {
+	if localRecord != nil && localRecord.SHA256 != "" &&
+		localRecord.Tag == s.UpdateInfo.Tag &&
+		s.CompareHash(localRecord.SHA256, targetFile) {
 		progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
-		s.SaveRecord(recordPath, "scheme_file", s.Config.Config.SchemeFile, s.UpdateInfo)
 		return nil
 	}
 

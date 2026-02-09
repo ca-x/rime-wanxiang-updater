@@ -159,12 +159,13 @@ func (d *DictUpdater) Run(progress types.ProgressFunc) error {
 	recordPath := d.Config.GetDictRecordPath()
 	targetFile := filepath.Join(d.Config.CacheDir, d.Config.Config.DictFile)
 
-	// 校验本地文件
+	// 校验本地文件：只有当版本未变化且缓存文件哈希匹配时才跳过下载
 	progress("正在校验本地文件...", 0.1, "", "", 0, 0, 0, false)
 	localRecord := d.GetLocalRecord(recordPath)
-	if localRecord != nil && localRecord.SHA256 != "" && d.CompareHash(localRecord.SHA256, targetFile) {
+	if localRecord != nil && localRecord.SHA256 != "" &&
+		localRecord.Tag == d.UpdateInfo.Tag &&
+		d.CompareHash(localRecord.SHA256, targetFile) {
 		progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
-		d.SaveRecord(recordPath, "dict_file", d.Config.Config.DictFile, d.UpdateInfo)
 		return nil
 	}
 
