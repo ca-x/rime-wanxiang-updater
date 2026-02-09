@@ -101,7 +101,7 @@ brew tap tinypkg/tap
 # 安装
 brew install rime-wanxiang-updater
 ```
-
+> 该tap更多的软件列表，请参考 https://github.com/tinypkg/homebrew-tap
 ### 其他平台 - 下载预编译版本
 
 从 [Releases](https://github.com/ca-x/rime-wanxiang-updater/releases) 页面下载适合您系统的版本：
