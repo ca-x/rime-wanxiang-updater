@@ -4,47 +4,95 @@ package config
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"rime-wanxiang-updater/internal/types"
 )
 
 // EngineInfo 引擎信息
 type EngineInfo struct {
-	Name    string
-	AppPath string
-	DataDir string
+	Name     string
+	AppPath  string
+	DataDir  string
+	BundleID string // macOS 输入法 Bundle ID
 }
 
 // macOS 引擎定义
 var macOSEngines = map[string]EngineInfo{
 	"鼠须管": {
-		Name:    "鼠须管",
-		AppPath: "/Library/Input Methods/Squirrel.app",
-		DataDir: "Library/Rime",
+		Name:     "鼠须管",
+		AppPath:  "/Library/Input Methods/Squirrel.app",
+		DataDir:  "Library/Rime",
+		BundleID: "im.rime.inputmethod.Squirrel",
 	},
 	"小企鹅": {
-		Name:    "小企鹅",
-		// TODO: 确认小企鹅最终安装的应用名称
-		// 安装器是 Fcitx5Installer.app，但最终应用可能是 Fcitx5.app
-		AppPath: "/Library/Input Methods/Fcitx5.app",
-		DataDir: ".local/share/fcitx5/rime",
+		Name:     "小企鹅",
+		AppPath:  "/Library/Input Methods/Fcitx5.app",
+		DataDir:  ".local/share/fcitx5/rime",
+		BundleID: "org.fcitx.inputmethod.Fcitx5",
 	},
 }
 
+// isAppValid 检查应用是否有效（存在 Info.plist）
+func isAppValid(appPath string) bool {
+	// 检查 Contents/Info.plist 是否存在
+	// 这是 macOS 应用的标准文件，用于验证应用完整性
+	plistPath := filepath.Join(appPath, "Contents", "Info.plist")
+	if _, err := os.Stat(plistPath); err == nil {
+		return true
+	}
+	return false
+}
+
+// isInputMethodRegistered 检查输入法是否已注册到系统
+// 通过检查 AppleEnabledInputSources 和 AppleInputSourceHistory
+func isInputMethodRegistered(bundleID string) bool {
+	// 检查启用的输入法
+	if checkInputSourceList("AppleEnabledInputSources", bundleID) {
+		return true
+	}
+	// 检查输入法历史（用户可能禁用了但仍安装）
+	if checkInputSourceList("AppleInputSourceHistory", bundleID) {
+		return true
+	}
+	return false
+}
+
+// checkInputSourceList 检查指定的输入法列表是否包含 bundleID
+func checkInputSourceList(domain, bundleID string) bool {
+	cmd := exec.Command("defaults", "read", "com.apple.HIToolbox", domain)
+	output, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	// 在输出中搜索 Bundle ID
+	return strings.Contains(string(output), bundleID)
+}
+
 // DetectInstalledEngines 检测已安装的引擎
+// 同时检查应用是否存在和是否已注册到系统
 func DetectInstalledEngines() []string {
 	homeDir, _ := os.UserHomeDir()
 	var installed []string
 
 	for _, engine := range macOSEngines {
-		// 同时检查系统目录和用户目录
-		systemPath := engine.AppPath
-		userPath := filepath.Join(homeDir, engine.AppPath)
+		appValid := false
 
-		if _, err := os.Stat(systemPath); err == nil {
-			installed = append(installed, engine.Name)
-		} else if _, err := os.Stat(userPath); err == nil {
+		// 检查系统目录
+		if isAppValid(engine.AppPath) {
+			appValid = true
+		} else {
+			// 检查用户目录
+			userAppPath := filepath.Join(homeDir, "Library", "Input Methods", filepath.Base(engine.AppPath))
+			if isAppValid(userAppPath) {
+				appValid = true
+			}
+		}
+
+		// 应用存在且已注册到系统才算真正安装
+		if appValid && isInputMethodRegistered(engine.BundleID) {
 			installed = append(installed, engine.Name)
 		}
 	}
