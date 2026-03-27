@@ -1,108 +1,169 @@
-# Progress Log
+# 进度日志 - 多输入法引擎支持
 
-## Session: 2026-01-10
+## 会话: 2026-01-10 初始规划
 
-### 12:23 - Session Start
-- User requested: Separate UI and logic using channels
-- User requested: Use planning-with-files for organization
-- User requested: Use code-simplifier for unified code style
+### 时间线
 
-### 12:24 - Initial Exploration
-- Read main.go - Entry point with boot sequence
-- Read internal/ui/model.go - BubbleTea Model structure
-- Read internal/ui/handlers.go - Input handlers with mixed logic
-- Read internal/ui/types.go - Model struct definition
-- Read internal/ui/commands.go - Update execution functions
-- Read internal/ui/views.go - Rendering functions
+**09:06 - 任务启动**
+- 用户提出需求：支持 macOS 下 FCITX5 (小企鹅) 和鼠须管并存
+- 用户补充：Linux、Windows 也可能有类似情况
+- 决定使用 planning-with-files 技能进行系统规划
 
-### 12:25 - Analysis Complete
-- Identified tight coupling between UI and logic
-- Found existing channel usage (ProgressChan, CompletionChan)
-- Documented current architecture in findings.md
-- Current update flow: UI → goroutine → channels → UI update
+**09:10 - 代码库探索**
+- 读取项目结构，发现关键目录：
+  - `internal/config/` - 配置管理
+  - `internal/deployer/` - 平台部署逻辑
+  - `internal/types/` - 类型定义
+  - `internal/ui/` - 用户界面
 
-### 12:26 - Planning Complete
-- Created findings.md with architecture analysis
-- Created task_plan.md with 10-phase refactoring plan
-- Created progress.md (this file)
-- Ready to proceed with implementation
+**09:15 - 关键文件分析**
+已读取并分析：
+1. ✅ `deployer/deployer.go` - 部署接口定义
+2. ✅ `deployer/darwin.go` - macOS 部署实现（已有小企鹅框架但未启用）
+3. ✅ `deployer/linux.go` - Linux 部署实现（已有多路径检测）
+4. ✅ `deployer/windows.go` - Windows 部署实现
+5. ✅ `config/config.go` - 配置管理（detectEngine 过于简单）
+6. ✅ `config/paths_darwin.go` - macOS 路径逻辑（支持双引擎但只能单选）
+7. ✅ `config/paths_linux.go` - Linux 路径逻辑（硬编码 fcitx5）
+8. ✅ `config/paths_windows.go` - Windows 路径逻辑
+9. ✅ `types/types.go` - Config 结构（Engine 为单字符串）
 
-### 12:50 - Refactoring Complete & Compilation Successful! ✅
+**09:20 - 发现总结**
+核心问题：
+- Config.Engine 只支持单个引擎字符串
+- detectEngine() 基于操作系统假设，无实际检测
+- macOS paths 已知双引擎路径但不支持并存
+- Linux deployer 有多路径检测，但 config 层未利用
 
-**Major milestone achieved!** The refactoring is complete and the program compiles successfully.
+机会：
+- Linux deployer 的多路径检测可作为参考实现
+- macOS deployer 已有小企鹅部署命令框架
 
-#### What was accomplished:
+**09:25 - 创建规划文件**
+- ✅ 创建 `findings.md` - 记录架构分析和发现
+- ✅ 创建 `task_plan.md` - 7 个阶段的实施计划
+- ✅ 创建 `progress.md` - 本文件
 
-1. **Created Controller Package** (`internal/controller/`):
-   - `messages.go`: Command and Event message types
-   - `types.go`: Controller struct and state types
-   - `controller.go`: Main controller logic with Run() loop
-   - `update_handlers.go`: All update operation handlers
-   - `config_handlers.go`: Configuration and wizard handlers
+**09:30 - 路径纠正和小企鹅详情**
+- ⚠️ 用户纠正：小企鹅安装包名称应该是 `Fcitx5Installer.app` 而不是 `Fcitx5.app`
+- 📋 用户提供小企鹅详细信息：
+  - 三个发行版本：拼音版、中州韵版、原装版
+  - 系统要求：macOS >= 13
+  - 用户数据目录确认：`~/.local/share/fcitx5/rime`
+- 📦 用户提供安装脚本，显示：
+  - 下载文件：`Fcitx5-Pinyin.zip` / `Fcitx5-Rime.zip` / `Fcitx5Installer.zip`
+  - 安装器程序：`Fcitx5Installer.app`（解压后的安装程序）
+- ❓ **待确认**: 安装器运行后，最终安装到 `/Library/Input Methods/` 的应用名称
+- 🔧 更新 `findings.md` 中的路径信息和详细说明
+- 📝 在 `task_plan.md` Phase 2 中添加路径修正任务
 
-2. **Refactored UI Package**:
-   - Updated `types.go`: Removed old message types, added controller channels
-   - Updated `model.go`: New constructor accepting channels, event handling
-   - Updated `handlers.go`: Send commands instead of executing logic
-   - Removed `commands.go`: Logic moved to controller
-
-3. **Updated Main Entry Point**:
-   - Initialize theme manager
-   - Create command and event channels
-   - Start controller in goroutine
-   - Pass channels to UI model
-   - Graceful controller shutdown
-
-4. **Architecture Changes**:
-   - Clean separation: UI → Commands → Controller → Events → UI
-   - Channel-based communication (10 buffer for commands, 100 for events)
-   - Concurrent operation: Controller runs in separate goroutine
-   - State management: Business logic in controller, UI state in model
-
-5. **Compilation Results**:
-   - ✅ No compilation errors
-   - ✅ Binary created: 11MB
-   - ✅ All package dependencies resolved
-   - ✅ Type safety maintained
-
-#### Files Created:
-- internal/controller/messages.go
-- internal/controller/types.go
-- internal/controller/controller.go
-- internal/controller/update_handlers.go
-- internal/controller/config_handlers.go
-
-#### Files Modified:
-- internal/ui/types.go (refactored Model struct)
-- internal/ui/model.go (new constructor + event handling)
-- internal/ui/handlers.go (send commands instead of executing)
-- cmd/rime-wanxiang-updater/main.go (wiring everything together)
-
-#### Files Removed:
-- internal/ui/commands.go (logic moved to controller)
+**10:00 - Ralph Loop 实现阶段**
+- 🔄 启动 Ralph Loop 模式进行持续改进
+- ✅ **Phase 1 完成**: 配置结构重构
+  - 新增 `InstalledEngines []string` 和 `PrimaryEngine string`
+  - 保留 `Engine string` 字段用于向后兼容
+- ✅ **Phase 2 完成**: 引擎自动检测
+  - macOS: 实现 `DetectInstalledEngines()` 检测鼠须管和小企鹅
+  - Linux: 实现多路径检测（fcitx5, ibus, fcitx）
+  - 新增 `EngineInfo` 结构存储引擎元数据
+- ✅ **Phase 3 完成**: 路径获取逻辑
+  - 更新 `getRimeUserDir()` 支持多引擎
+  - 新增 `GetEngineDataDir()` 获取指定引擎路径
+  - 新增 `GetAllEngineDataDirs()` 获取所有引擎路径
+- ✅ **Phase 4 完成**: 部署器重构
+  - macOS deployer 支持鼠须管和小企鹅
+  - 新增 `DeployToAllEngines()` 方法
+  - 部署逻辑支持选择主引擎或所有引擎
+- ✅ **Phase 5 完成**: 配置管理
+  - 实现配置迁移逻辑（旧 Engine → 新多引擎结构）
+  - 新增 `RedetectEngines()` 重新检测功能
+  - 新增 `GetEngineDisplayName()` 多引擎显示（用 + 连接）
+- ✅ **编译成功**: 整个项目编译通过
+- ✅ **测试通过**: config 包所有单元测试通过
+  - TestDetectInstalledEngines ✓
+  - TestGetRimeUserDir ✓
+  - TestGetEngineDataDir ✓
+  - TestGetAllEngineDataDirs ✓
+  - TestConfigMigration ✓
+  - TestGetEngineDisplayName ✓
+  - TestRedetectEngines ✓
+  - TestCreateDefaultConfig ✓
 
 ---
 
-## Next Steps
-1. Test the program with actual execution
-2. Verify all features work correctly
-3. Update documentation if needed
-4. Consider code cleanup and optimization
+### 关键发现
+
+1. **macOS 双引擎支持**
+   - Squirrel (鼠须管): `~/Library/Rime`
+   - FCITX5 (小企鹅): `~/.local/share/fcitx5/rime`
+   - deployer 已有小企鹅部署命令但未启用
+
+2. **Linux 多引擎检测参考**
+   - `deployer/linux.go:58-83` 已实现优先级检测
+   - 支持 fcitx5, ibus, fcitx(v4)
+   - 可移植到 config 层
+
+3. **配置结构需重构**
+   - 当前: `Engine string`
+   - 建议: `InstalledEngines []string` + `PrimaryEngine string`
 
 ---
 
-## Files Created
-- [x] findings.md (architecture analysis)
-- [x] task_plan.md (10-phase plan)
-- [x] progress.md (this file)
-- [x] architecture_design.md (detailed design specification)
+### 下一步行动
 
-## Files Modified
-- [x] task_plan.md (marked Phase 1 as complete)
-- [x] progress.md (updated with Phase 1 completion)
+**立即执行**:
+- [ ] 等待用户确认规划方向
+- [ ] 决定配置结构方案（简单 vs 复杂）
+- [ ] 开始 Phase 1: 设计配置结构
 
-## Tests Run
-- (none yet)
+**等待决策**:
+- 配置结构选择（选项 A vs B in findings.md）
+- 部署模式（仅主引擎 vs 所有引擎）
+- 检测时机（启动 vs 手动 vs 混合）
 
-## Blockers
-- (none yet)
+---
+
+### 工具调用统计
+
+- Read: 9 次（关键文件）
+- Grep: 5 次（搜索引擎相关代码）
+- Bash: 3 次（查找文件和路径）
+- Write: 3 次（创建规划文件）
+- Edit: 1 次（更新 findings.md 小企鹅说明）
+
+---
+
+### 待解决问题
+
+1. ❓ Windows 是否真的可能有多个 Rime 引擎？
+2. ❓ FCITX5 macOS 的实际安装路径是否总是 `/Library/Input Methods/Fcitx5.app`？
+3. ❓ 配置迁移策略的细节（如何处理旧的 `Engine` 字段）？
+4. ❓ 用户是否需要"同步到所有引擎"功能？
+
+---
+
+### 测试计划
+
+**需要测试环境**:
+- [ ] macOS + 鼠须管 + 小企鹅
+- [ ] Linux + fcitx5
+- [ ] Linux + ibus
+- [ ] Linux + fcitx(v4) + fcitx5
+- [ ] Windows + 小狼毫
+
+**测试场景**:
+- [ ] 单引擎安装（向后兼容）
+- [ ] 双引擎并存
+- [ ] 旧配置迁移
+- [ ] 引擎切换
+- [ ] 部署到指定引擎
+
+---
+
+## 备注
+
+- 使用 planning-with-files 模式组织工作
+- 所有规划文件位于项目根目录
+- findings.md: 研究和发现
+- task_plan.md: 分阶段任务计划
+- progress.md: 本文件，会话日志
