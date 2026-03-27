@@ -6,6 +6,44 @@ import (
 	"rime-wanxiang-updater/internal/updater"
 )
 
+func isFirstInstall(localVersion string) bool {
+	return localVersion == "未安装" || localVersion == "未知版本"
+}
+
+func successMessageForSingleUpdate(updateType, localVersion string) string {
+	if isFirstInstall(localVersion) {
+		return fmt.Sprintf("%s安装完成！", updateType)
+	}
+
+	return fmt.Sprintf("%s更新完成！", updateType)
+}
+
+func successMessageForAutoUpdate(updatedComponents []string, previousVersions map[string]string) string {
+	if len(updatedComponents) == 0 {
+		return "更新完成！"
+	}
+
+	hasInstall := false
+	hasUpdate := false
+
+	for _, component := range updatedComponents {
+		if isFirstInstall(previousVersions[component]) {
+			hasInstall = true
+		} else {
+			hasUpdate = true
+		}
+	}
+
+	switch {
+	case hasInstall && hasUpdate:
+		return "安装和更新完成！"
+	case hasInstall:
+		return "安装完成！"
+	default:
+		return "更新完成！"
+	}
+}
+
 // handleAutoUpdate handles the auto update command
 func (c *Controller) handleAutoUpdate(cmd Command) {
 	c.mu.Lock()
@@ -80,17 +118,19 @@ func (c *Controller) handleAutoUpdate(cmd Command) {
 
 		var updatedComponents, skippedComponents []string
 		componentVersions := make(map[string]string)
+		previousVersions := make(map[string]string)
 		if result != nil {
 			updatedComponents = result.UpdatedComponents
 			skippedComponents = result.SkippedComponents
 			componentVersions = result.ComponentVersions
+			previousVersions = result.PreviousVersions
 		}
 
 		c.emitEvent(EvtUpdateSuccess, UpdateCompletePayload{
 			UpdateType:        "自动",
 			Success:           true,
 			Skipped:           len(updatedComponents) == 0,
-			Message:           "更新完成！",
+			Message:           successMessageForAutoUpdate(updatedComponents, previousVersions),
 			UpdatedComponents: updatedComponents,
 			SkippedComponents: skippedComponents,
 			ComponentVersions: componentVersions,
@@ -162,7 +202,7 @@ func (c *Controller) handleUpdateDict(cmd Command) {
 			UpdateType: "词库",
 			Success:    true,
 			Skipped:    false,
-			Message:    "词库更新完成！",
+			Message:    successMessageForSingleUpdate("词库", status.LocalVersion),
 		})
 	}()
 }
@@ -231,7 +271,7 @@ func (c *Controller) handleUpdateScheme(cmd Command) {
 			UpdateType: "方案",
 			Success:    true,
 			Skipped:    false,
-			Message:    "方案更新完成！",
+			Message:    successMessageForSingleUpdate("方案", status.LocalVersion),
 		})
 	}()
 }
@@ -262,6 +302,27 @@ func (c *Controller) handleUpdateModel(cmd Command) {
 			c.emitProgress("模型", message, percent, source, fileName, downloaded, total, speed, downloadMode)
 		}
 
+		status, err := modelUpdater.GetStatus()
+		if err != nil {
+			c.emitEvent(EvtUpdateFailure, UpdateCompletePayload{
+				UpdateType: "模型",
+				Success:    false,
+				Message:    fmt.Sprintf("获取状态失败: %v", err),
+			})
+			return
+		}
+
+		if !status.NeedsUpdate {
+			progressFunc("模型已是最新版本，跳过更新", 1.0, "", "", 0, 0, 0, false)
+			c.emitEvent(EvtUpdateSkipped, UpdateCompletePayload{
+				UpdateType: "模型",
+				Success:    true,
+				Skipped:    true,
+				Message:    status.Message,
+			})
+			return
+		}
+
 		if err := modelUpdater.Run(progressFunc); err == nil {
 			err = modelUpdater.Deploy()
 			if err != nil {
@@ -285,7 +346,7 @@ func (c *Controller) handleUpdateModel(cmd Command) {
 			UpdateType: "模型",
 			Success:    true,
 			Skipped:    false,
-			Message:    "模型更新完成！",
+			Message:    successMessageForSingleUpdate("模型", status.LocalVersion),
 		})
 	}()
 }

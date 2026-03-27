@@ -26,6 +26,10 @@ func NewSchemeUpdater(cfg *config.Manager) *SchemeUpdater {
 
 // GetStatus 获取更新状态
 func (s *SchemeUpdater) GetStatus() (*types.UpdateStatus, error) {
+	if err := s.Config.ReconcileRuntimeState(); err != nil {
+		return nil, err
+	}
+
 	// 获取远程版本信息
 	remoteInfo, err := s.CheckUpdate()
 	if err != nil {
@@ -126,6 +130,10 @@ func (s *SchemeUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 func (s *SchemeUpdater) Run(progress types.ProgressFunc) error {
 	if progress == nil {
 		progress = func(string, float64, string, string, int64, int64, float64, bool) {} // 空函数避免 nil 检查
+	}
+
+	if err := s.EnsureInstalledEngine(); err != nil {
+		return err
 	}
 
 	// 执行更新前 hook

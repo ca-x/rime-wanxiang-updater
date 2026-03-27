@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"cmp"
+	"os"
 	"time"
 
 	"rime-wanxiang-updater/internal/config"
@@ -22,18 +24,17 @@ func NewModel(
 	p := progress.New(progress.WithDefaultGradient())
 	p.Width = 60
 
+	rimeStatus := detector.CheckRimeInstallation()
+
 	state := ViewMenu
 	wizardStep := WizardSchemeType
-	if cfg.Config.SchemeType == "" || cfg.Config.SchemeFile == "" || cfg.Config.DictFile == "" {
+	_, statErr := os.Stat(cfg.RimeDir)
+	rimeDirMissing := cfg.RimeDir == "" || os.IsNotExist(statErr)
+	if cfg.Config.SchemeType == "" || cfg.Config.SchemeFile == "" || cfg.Config.DictFile == "" || !rimeStatus.Installed || rimeDirMissing {
 		state = ViewWizard
 	}
 
-	rimeStatus := detector.CheckRimeInstallation()
-
-	countdown := cfg.Config.AutoUpdateCountdown
-	if countdown <= 0 {
-		countdown = 5
-	}
+	countdown := cmp.Or(cfg.Config.AutoUpdateCountdown, 5)
 
 	// 创建主题化样式
 	styles := DefaultStyles(themeMgr)

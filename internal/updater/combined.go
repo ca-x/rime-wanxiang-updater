@@ -86,6 +86,7 @@ type UpdateResult struct {
 	UpdatedComponents []string          // 已更新的组件
 	SkippedComponents []string          // 跳过的组件（已是最新版本）
 	ComponentVersions map[string]string // 组件版本信息（组件名 -> 版本号）
+	PreviousVersions  map[string]string // 更新前组件版本信息（组件名 -> 版本号）
 }
 
 // RunAllWithProgress 执行所有更新并报告进度
@@ -95,11 +96,16 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 		UpdatedComponents: []string{},
 		SkippedComponents: []string{},
 		ComponentVersions: make(map[string]string),
+		PreviousVersions:  make(map[string]string),
 	}
 
 	// 如果没有提供进度回调，使用空函数
 	if progress == nil {
 		progress = func(string, string, float64, string, string, int64, int64, float64, bool) {}
+	}
+
+	if !c.Config.HasInstalledEngine() {
+		return result, fmt.Errorf("未检测到已安装的 Rime 引擎，请先安装并启用 Rime 输入法")
 	}
 
 	// 收集需要更新的项
@@ -110,6 +116,7 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 	if c.SchemeUpdater.UpdateInfo != nil {
 		if schemeStatus, err := c.SchemeUpdater.GetStatus(); err == nil && schemeStatus.NeedsUpdate {
 			needsSchemeUpdate = true
+			result.PreviousVersions["方案"] = schemeStatus.LocalVersion
 		} else if err == nil {
 			result.SkippedComponents = append(result.SkippedComponents, "方案")
 			result.ComponentVersions["方案"] = schemeStatus.LocalVersion
@@ -119,6 +126,7 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 	if c.DictUpdater.UpdateInfo != nil {
 		if dictStatus, err := c.DictUpdater.GetStatus(); err == nil && dictStatus.NeedsUpdate {
 			needsDictUpdate = true
+			result.PreviousVersions["词库"] = dictStatus.LocalVersion
 		} else if err == nil {
 			result.SkippedComponents = append(result.SkippedComponents, "词库")
 			result.ComponentVersions["词库"] = dictStatus.LocalVersion
@@ -128,6 +136,9 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 	if c.ModelUpdater.UpdateInfo != nil &&
 		c.ModelUpdater.HasUpdate(c.ModelUpdater.UpdateInfo, c.Config.GetModelRecordPath()) {
 		needsModelUpdate = true
+		if modelStatus, err := c.ModelUpdater.GetStatus(); err == nil {
+			result.PreviousVersions["模型"] = modelStatus.LocalVersion
+		}
 	} else if c.ModelUpdater.UpdateInfo != nil {
 		if modelStatus, err := c.ModelUpdater.GetStatus(); err == nil {
 			result.SkippedComponents = append(result.SkippedComponents, "模型")

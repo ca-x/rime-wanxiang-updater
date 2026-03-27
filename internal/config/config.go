@@ -2,17 +2,26 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
 	"rime-wanxiang-updater/internal/api"
 	"rime-wanxiang-updater/internal/types"
+)
+
+// Sentinel errors for expected error conditions.
+var (
+	ErrNoEngineDetected = errors.New("no input method engine detected")
+	ErrPatternExists    = errors.New("exclude pattern already exists")
+	ErrIndexOutOfRange  = errors.New("index out of range")
 )
 
 // Manager 配置管理器
@@ -89,14 +98,7 @@ func (m *Manager) loadOrCreateConfig() (*types.Config, error) {
 
 	// 验证 PrimaryEngine 是否仍然存在
 	if config.PrimaryEngine != "" {
-		found := false
-		for _, engine := range config.InstalledEngines {
-			if engine == config.PrimaryEngine {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !slices.Contains(config.InstalledEngines, config.PrimaryEngine) {
 			// 主引擎已不存在
 			if len(config.InstalledEngines) > 0 {
 				oldPrimary := config.PrimaryEngine
@@ -120,11 +122,8 @@ func (m *Manager) loadOrCreateConfig() (*types.Config, error) {
 	if len(config.UpdateEngines) > 0 {
 		var validUpdateEngines []string
 		for _, engine := range config.UpdateEngines {
-			for _, installed := range config.InstalledEngines {
-				if engine == installed {
-					validUpdateEngines = append(validUpdateEngines, engine)
-					break
-				}
+			if slices.Contains(config.InstalledEngines, engine) {
+				validUpdateEngines = append(validUpdateEngines, engine)
 			}
 		}
 		if len(validUpdateEngines) != len(config.UpdateEngines) {
@@ -154,11 +153,13 @@ func (m *Manager) loadOrCreateConfig() (*types.Config, error) {
 
 // saveConfig 保存配置
 func (m *Manager) saveConfig(config *types.Config) error {
-	os.MkdirAll(filepath.Dir(m.ConfigPath), 0755)
+	if err := os.MkdirAll(filepath.Dir(m.ConfigPath), 0755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
 
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
-		return fmt.Errorf("序列化配置失败: %w", err)
+		return fmt.Errorf("serialize config: %w", err)
 	}
 
 	return os.WriteFile(m.ConfigPath, data, 0644)
@@ -169,27 +170,65 @@ func (m *Manager) SaveConfig() error {
 	return m.saveConfig(m.Config)
 }
 
-// RedetectEngines 重新检测已安装的引擎
-func (m *Manager) RedetectEngines() error {
-	m.Config.InstalledEngines = DetectInstalledEngines()
+// RefreshRuntimeState refreshes detected engines and the active Rime dir from live system state.
+func (m *Manager) RefreshRuntimeState() {
+	if m == nil || m.Config == nil {
+		return
+	}
 
-	// 如果主引擎不在新的已安装列表中，重新设置
-	if m.Config.PrimaryEngine != "" {
-		found := false
-		for _, engine := range m.Config.InstalledEngines {
-			if engine == m.Config.PrimaryEngine {
-				found = true
-				break
-			}
-		}
-		if !found && len(m.Config.InstalledEngines) > 0 {
-			m.Config.PrimaryEngine = m.Config.InstalledEngines[0]
-		}
-	} else if len(m.Config.InstalledEngines) > 0 {
+	m.Config.InstalledEngines = DetectInstalledEngines()
+	if m.Config.PrimaryEngine != "" && !slices.Contains(m.Config.InstalledEngines, m.Config.PrimaryEngine) {
+		m.Config.PrimaryEngine = ""
+	}
+	if m.Config.PrimaryEngine == "" && len(m.Config.InstalledEngines) > 0 {
 		m.Config.PrimaryEngine = m.Config.InstalledEngines[0]
 	}
 
-	return m.SaveConfig()
+	m.RimeDir = getRimeUserDir(m.Config)
+}
+
+// ReconcileRuntimeState refreshes live system state and persists config changes when they differ.
+func (m *Manager) ReconcileRuntimeState() error {
+	if m == nil || m.Config == nil {
+		return nil
+	}
+
+	oldPrimary := m.Config.PrimaryEngine
+	oldRimeDir := m.RimeDir
+	oldInstalled := append([]string(nil), m.Config.InstalledEngines...)
+	oldUpdateEngines := append([]string(nil), m.Config.UpdateEngines...)
+
+	m.RefreshRuntimeState()
+
+	if len(m.Config.UpdateEngines) > 0 {
+		var validUpdateEngines []string
+		for _, engine := range m.Config.UpdateEngines {
+			if slices.Contains(m.Config.InstalledEngines, engine) {
+				validUpdateEngines = append(validUpdateEngines, engine)
+			}
+		}
+		m.Config.UpdateEngines = validUpdateEngines
+	}
+
+	if len(m.Config.UpdateEngines) == 0 && len(m.Config.InstalledEngines) > 1 {
+		m.Config.UpdateEngines = append([]string(nil), m.Config.InstalledEngines...)
+	}
+
+	changed := oldPrimary != m.Config.PrimaryEngine ||
+		oldRimeDir != m.RimeDir ||
+		!slices.Equal(oldInstalled, m.Config.InstalledEngines) ||
+		!slices.Equal(oldUpdateEngines, m.Config.UpdateEngines)
+
+	if changed && m.ConfigPath != "" {
+		return m.SaveConfig()
+	}
+
+	return nil
+}
+
+// RedetectEngines 重新检测已安装的引擎
+func (m *Manager) RedetectEngines() error {
+	return m.ReconcileRuntimeState()
 }
 
 // GetEngineDisplayName 获取引擎显示名称
@@ -239,14 +278,12 @@ func (m *Manager) AddExcludePattern(pattern string) error {
 	// 验证模式
 	_, err := ParseExcludePattern(pattern)
 	if err != nil {
-		return fmt.Errorf("无效的排除模式: %w", err)
+		return fmt.Errorf("invalid exclude pattern: %w", err)
 	}
 
 	// 检查是否已存在
-	for _, existing := range m.Config.ExcludeFiles {
-		if existing == pattern {
-			return fmt.Errorf("模式已存在")
-		}
+	if slices.Contains(m.Config.ExcludeFiles, pattern) {
+		return ErrPatternExists
 	}
 
 	m.Config.ExcludeFiles = append(m.Config.ExcludeFiles, pattern)
@@ -256,7 +293,7 @@ func (m *Manager) AddExcludePattern(pattern string) error {
 // RemoveExcludePattern 删除排除模式
 func (m *Manager) RemoveExcludePattern(index int) error {
 	if index < 0 || index >= len(m.Config.ExcludeFiles) {
-		return fmt.Errorf("索引超出范围")
+		return ErrIndexOutOfRange
 	}
 
 	m.Config.ExcludeFiles = append(
@@ -343,7 +380,8 @@ func getConfigPath() string {
 func getCacheDir() string {
 	homeDir, _ := os.UserHomeDir()
 	cacheDir := filepath.Join(homeDir, ".rime-updater", "cache")
-	os.MkdirAll(cacheDir, 0755)
+	// Ignore error - if directory creation fails, operations will fail later with clear errors.
+	_ = os.MkdirAll(cacheDir, 0755)
 	return cacheDir
 }
 
@@ -453,6 +491,11 @@ func (m *Manager) GetDictRecordPath() string {
 // GetModelRecordPath 获取模型记录文件路径
 func (m *Manager) GetModelRecordPath() string {
 	return filepath.Join(m.CacheDir, "model_record.json")
+}
+
+// HasInstalledEngine reports whether a real installed engine and data dir exist.
+func (m *Manager) HasInstalledEngine() bool {
+	return m != nil && m.Config != nil && len(m.Config.InstalledEngines) > 0 && m.RimeDir != ""
 }
 
 // ValidateExcludeFiles 验证排除文件配置

@@ -22,18 +22,18 @@ var windowsEngines = []EngineInfo{
 	{
 		Name: "小狼毫",
 		RegistryKeys: []string{
-			`Software\Rime\Weasel`,                  // CURRENT_USER
-			`SOFTWARE\WOW6432Node\Rime\Weasel`,      // LOCAL_MACHINE 64位
-			`SOFTWARE\Rime\Weasel`,                  // LOCAL_MACHINE 32位
+			`Software\Rime\Weasel`,             // CURRENT_USER
+			`SOFTWARE\WOW6432Node\Rime\Weasel`, // LOCAL_MACHINE 64位
+			`SOFTWARE\Rime\Weasel`,             // LOCAL_MACHINE 32位
 		},
 		DataDir: "Rime",
 	},
 	{
 		Name: "玉兔毫",
 		RegistryKeys: []string{
-			`Software\Rime\Rabbit`,                  // CURRENT_USER
-			`SOFTWARE\WOW6432Node\Rime\Rabbit`,      // LOCAL_MACHINE 64位
-			`SOFTWARE\Rime\Rabbit`,                  // LOCAL_MACHINE 32位
+			`Software\Rime\Rabbit`,             // CURRENT_USER
+			`SOFTWARE\WOW6432Node\Rime\Rabbit`, // LOCAL_MACHINE 64位
+			`SOFTWARE\Rime\Rabbit`,             // LOCAL_MACHINE 32位
 		},
 		DataDir: "Rabbit",
 	},
@@ -47,11 +47,6 @@ func DetectInstalledEngines() []string {
 		if isEngineInstalled(engine) {
 			installed = append(installed, engine.Name)
 		}
-	}
-
-	// 如果没有检测到任何引擎，返回小狼毫作为默认
-	if len(installed) == 0 {
-		return []string{"小狼毫"}
 	}
 
 	return installed
@@ -142,7 +137,7 @@ func getRimeUserDir(config *types.Config) string {
 		engine = config.Engine
 	}
 	if engine == "" {
-		engine = "小狼毫"
+		return ""
 	}
 
 	// 查找引擎的数据目录
@@ -157,12 +152,7 @@ func getRimeUserDir(config *types.Config) string {
 		}
 	}
 
-	// 默认返回小狼毫路径
-	// 尝试从注册表读取自定义路径
-	if customPath := getWindowsRimeDir(); customPath != "" {
-		return customPath
-	}
-	return filepath.Join(os.Getenv("APPDATA"), "Rime")
+	return ""
 }
 
 // getEngineCustomPath 从注册表获取引擎的自定义路径

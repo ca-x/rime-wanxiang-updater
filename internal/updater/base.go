@@ -33,6 +33,20 @@ func NewBaseUpdater(cfg *config.Manager) *BaseUpdater {
 	}
 }
 
+func (b *BaseUpdater) EnsureInstalledEngine() error {
+	if b != nil && b.Config != nil {
+		if err := b.Config.ReconcileRuntimeState(); err != nil {
+			return fmt.Errorf("同步配置状态失败: %w", err)
+		}
+	}
+
+	if b == nil || b.Config == nil || !b.Config.HasInstalledEngine() {
+		return fmt.Errorf("未检测到已安装的 Rime 引擎，请先安装并启用 Rime 输入法")
+	}
+
+	return nil
+}
+
 // HasUpdate 检查是否有更新
 func (b *BaseUpdater) HasUpdate(updateInfo *types.UpdateInfo, recordPath string) bool {
 	if updateInfo == nil {

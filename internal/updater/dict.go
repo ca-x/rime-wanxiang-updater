@@ -26,6 +26,10 @@ func NewDictUpdater(cfg *config.Manager) *DictUpdater {
 
 // GetStatus 获取更新状态
 func (d *DictUpdater) GetStatus() (*types.UpdateStatus, error) {
+	if err := d.Config.ReconcileRuntimeState(); err != nil {
+		return nil, err
+	}
+
 	// 获取远程版本信息
 	remoteInfo, err := d.CheckUpdate()
 	if err != nil {
@@ -127,6 +131,10 @@ func (d *DictUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 func (d *DictUpdater) Run(progress types.ProgressFunc) error {
 	if progress == nil {
 		progress = func(string, float64, string, string, int64, int64, float64, bool) {} // 空函数避免 nil 检查
+	}
+
+	if err := d.EnsureInstalledEngine(); err != nil {
+		return err
 	}
 
 	// 执行更新前 hook

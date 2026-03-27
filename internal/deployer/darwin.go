@@ -14,12 +14,11 @@ type darwinDeployer struct {
 	config *types.Config
 }
 
-func newDeployer(config interface{}) Deployer {
-	cfg, ok := config.(*types.Config)
-	if !ok {
+func newDeployer(config *types.Config) Deployer {
+	if config == nil {
 		return &darwinDeployer{}
 	}
-	return &darwinDeployer{config: cfg}
+	return &darwinDeployer{config: config}
 }
 
 // TerminateProcesses macOS 不需要终止进程

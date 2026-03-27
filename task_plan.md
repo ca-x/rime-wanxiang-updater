@@ -204,8 +204,67 @@
 
 ## 当前状态
 
-**活跃阶段**: 无（规划中）
-**已完成阶段**: 0/7
-**总体进度**: 0%
+**活跃阶段**: Go 代码质量审查
+**已完成阶段**: 0/7 (multi-engine), 审查完成
+**总体进度**: 审查完成，待实施改进
 
-**下一步行动**: 完成 Phase 1 的配置结构设计
+**下一步行动**: 实施 Go 代码质量改进
+
+---
+
+## Go 代码质量改进 (2026-03-27)
+
+### 已发现的问题
+
+#### 1. 现代 Go 特性未使用 (Go 1.25.5)
+
+| 文件 | 行号 | 问题 | 建议 |
+|------|------|------|------|
+| `config/config.go` | 93-97 | 手动循环检查元素 | 使用 `slices.Contains` |
+| `config/config.go` | 178-183 | 同上 | 使用 `slices.Contains` |
+| `ui/model.go` | 36-39 | 默认值判断 | 使用 `cmp.Or` |
+| `types/types.go` | 多处 | `omitempty` 时间字段 | 使用 `omitzero` |
+
+#### 2. 错误处理问题
+
+| 文件 | 行号 | 问题 |
+|------|------|------|
+| `config/config.go` | 157 | `os.MkdirAll` 错误未包装 |
+| `config/config.go` | 346 | `os.MkdirAll` 错误被忽略 |
+| `updater/base.go` | 65-72 | 返回 nil 无上下文 |
+
+#### 3. 接口设计问题
+
+| 文件 | 行号 | 问题 |
+|------|------|------|
+| `deployer/deployer.go` | 10 | 使用 `interface{}` 而非类型参数 |
+
+### 改进清单
+
+- [x] 1. 更新 `types/types.go` - 使用 `omitzero` 标签 ✅
+- [x] 2. 更新 `config/config.go` - 使用 `slices.Contains`，修复错误包装 ✅
+- [x] 3. 更新 `deployer/deployer.go` - 使用类型参数 ✅
+- [x] 4. 更新 `ui/model.go` - 使用 `cmp.Or` ✅
+- [ ] 5. 更新 `updater/base.go` - 改进错误处理（待完成）
+
+### 已完成的改进详情
+
+#### types/types.go
+- 将 `time.Time` 字段的 `omitempty` 改为 `omitzero` (Go 1.24+)
+- 影响: `UpdateInfo`, `UpdateRecord`, `GitHubRelease`, `GitHubAsset`, `CNBAsset`
+
+#### config/config.go
+- 添加 `slices` 包导入
+- 添加哨兵错误: `ErrNoEngineDetected`, `ErrPatternExists`, `ErrIndexOutOfRange`
+- 使用 `slices.Contains` 替代手动循环检查
+- 修复 `saveConfig` 中的错误包装
+- 改进 `getCacheDir` 中的错误处理注释
+
+#### deployer/deployer.go + 平台实现
+- 将 `GetDeployer(config interface{})` 改为 `GetDeployer(config *types.Config)`
+- 更新 `darwin.go`, `linux.go`, `windows.go` 的 `newDeployer` 函数签名
+- 移除类型断言，直接使用类型参数
+
+#### ui/model.go
+- 添加 `cmp` 包导入
+- 使用 `cmp.Or(cfg.Config.AutoUpdateCountdown, 5)` 替代 if 判断

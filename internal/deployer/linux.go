@@ -15,12 +15,11 @@ type linuxDeployer struct {
 	config *types.Config
 }
 
-func newDeployer(config interface{}) Deployer {
-	cfg, ok := config.(*types.Config)
-	if !ok {
+func newDeployer(config *types.Config) Deployer {
+	if config == nil {
 		return &linuxDeployer{}
 	}
-	return &linuxDeployer{config: cfg}
+	return &linuxDeployer{config: config}
 }
 
 // TerminateProcesses Linux 不需要终止进程

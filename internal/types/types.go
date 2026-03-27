@@ -64,7 +64,7 @@ type Config struct {
 type UpdateInfo struct {
 	Name        string    `json:"name"`
 	URL         string    `json:"url"`
-	UpdateTime  time.Time `json:"update_time"`
+	UpdateTime  time.Time `json:"update_time,omitzero"`
 	Tag         string    `json:"tag"`
 	Description string    `json:"description"`
 	SHA256      string    `json:"sha256"`
@@ -75,9 +75,9 @@ type UpdateInfo struct {
 // UpdateRecord 更新记录
 type UpdateRecord struct {
 	Name       string    `json:"name"`
-	UpdateTime time.Time `json:"update_time"`
+	UpdateTime time.Time `json:"update_time,omitzero"`
 	Tag        string    `json:"tag"`
-	ApplyTime  time.Time `json:"apply_time"`
+	ApplyTime  time.Time `json:"apply_time,omitzero"`
 	SHA256     string    `json:"sha256"`
 	CnbID      string    `json:"cnb_id"`
 }
@@ -87,14 +87,14 @@ type GitHubRelease struct {
 	TagName     string        `json:"tag_name"`
 	Body        string        `json:"body"`
 	Assets      []GitHubAsset `json:"assets"`
-	PublishedAt time.Time     `json:"published_at"`
+	PublishedAt time.Time     `json:"published_at,omitzero"`
 }
 
 // GitHubAsset GitHub Asset 结构
 type GitHubAsset struct {
 	Name               string    `json:"name"`
 	BrowserDownloadURL string    `json:"browser_download_url"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	UpdatedAt          time.Time `json:"updated_at,omitzero"`
 	Size               int64     `json:"size"`
 }
 
@@ -110,7 +110,7 @@ type CNBRelease struct {
 type CNBAsset struct {
 	Name       string    `json:"name"`
 	Path       string    `json:"path"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	UpdatedAt  time.Time `json:"updated_at,omitzero"`
 	Digest     string    `json:"digest"`
 	ID         string    `json:"id"`
 	SizeInByte int64     `json:"sizeInByte"`

@@ -97,11 +97,6 @@ func DetectInstalledEngines() []string {
 		}
 	}
 
-	// 如果没有检测到任何引擎，返回鼠须管作为默认
-	if len(installed) == 0 {
-		return []string{"鼠须管"}
-	}
-
 	return installed
 }
 
@@ -120,16 +115,14 @@ func getRimeUserDir(config *types.Config) string {
 		engine = config.Engine
 	}
 	if engine == "" {
-		// 最后的默认值
-		engine = "鼠须管"
+		return ""
 	}
 
 	if info, ok := macOSEngines[engine]; ok {
 		return filepath.Join(homeDir, info.DataDir)
 	}
 
-	// 默认返回鼠须管路径
-	return filepath.Join(homeDir, "Library", "Rime")
+	return ""
 }
 
 // GetEngineDataDir 获取指定引擎的数据目录

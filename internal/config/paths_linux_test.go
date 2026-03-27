@@ -11,22 +11,33 @@ import (
 )
 
 func TestDetectInstalledEngines(t *testing.T) {
+	originalHome := os.Getenv("HOME")
+	originalPath := os.Getenv("PATH")
+	t.Cleanup(func() {
+		_ = os.Setenv("HOME", originalHome)
+		_ = os.Setenv("PATH", originalPath)
+	})
+
+	tempHome := t.TempDir()
+	if err := os.Setenv("HOME", tempHome); err != nil {
+		t.Fatalf("Setenv HOME failed: %v", err)
+	}
+	if err := os.Setenv("PATH", ""); err != nil {
+		t.Fatalf("Setenv PATH failed: %v", err)
+	}
+
 	engines := DetectInstalledEngines()
 
-	if len(engines) == 0 {
-		t.Error("Expected at least one engine (default)")
+	if len(engines) != 0 {
+		t.Fatalf("DetectInstalledEngines() = %v, want no engines when nothing is installed", engines)
 	}
+}
 
-	validEngines := map[string]bool{
-		"fcitx5": true,
-		"ibus":   true,
-		"fcitx":  true,
-	}
+func TestGetRimeUserDirNoInstalledEngine(t *testing.T) {
+	result := getRimeUserDir(&types.Config{})
 
-	for _, engine := range engines {
-		if !validEngines[engine] {
-			t.Errorf("Unexpected engine: %s", engine)
-		}
+	if result != "" {
+		t.Fatalf("getRimeUserDir() = %q, want empty path when no engine is configured or installed", result)
 	}
 }
 
@@ -36,7 +47,7 @@ func TestGetRimeUserDir(t *testing.T) {
 	tests := []struct {
 		name     string
 		config   *types.Config
-		wantPath string // 可能的路径之一
+		wantPath string
 	}{
 		{
 			name: "Primary engine is fcitx5",
@@ -68,9 +79,8 @@ func TestGetRimeUserDir(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := getRimeUserDir(tt.config)
 			expectedPath := filepath.Join(homeDir, tt.wantPath)
-			// 结果应该包含期望的路径或该引擎的任一有效路径
-			if !filepath.IsAbs(result) {
-				t.Errorf("getRimeUserDir() should return absolute path, got %v", result)
+			if result != expectedPath {
+				t.Errorf("getRimeUserDir() = %v, want %v", result, expectedPath)
 			}
 		})
 	}

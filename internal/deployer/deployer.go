@@ -1,5 +1,7 @@
 package deployer
 
+import "rime-wanxiang-updater/internal/types"
+
 // Deployer 部署接口
 type Deployer interface {
 	Deploy() error
@@ -7,6 +9,6 @@ type Deployer interface {
 }
 
 // GetDeployer 获取当前平台的部署器
-func GetDeployer(config interface{}) Deployer {
+func GetDeployer(config *types.Config) Deployer {
 	return newDeployer(config)
 }

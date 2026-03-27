@@ -10,13 +10,14 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows/registry"
+	"rime-wanxiang-updater/internal/types"
 )
 
 type windowsDeployer struct {
 	weaselServer string
 }
 
-func newDeployer(config interface{}) Deployer {
+func newDeployer(config *types.Config) Deployer {
 	return &windowsDeployer{
 		weaselServer: getWeaselServerPath(),
 	}
@@ -94,4 +95,3 @@ func (d *windowsDeployer) DeployToAllEnginesWithProgress(progressFunc func(engin
 	}
 	return d.Deploy()
 }
-

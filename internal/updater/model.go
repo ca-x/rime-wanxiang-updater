@@ -26,6 +26,10 @@ func NewModelUpdater(cfg *config.Manager) *ModelUpdater {
 
 // GetStatus 获取更新状态
 func (m *ModelUpdater) GetStatus() (*types.UpdateStatus, error) {
+	if err := m.Config.ReconcileRuntimeState(); err != nil {
+		return nil, err
+	}
+
 	// 获取远程版本信息
 	remoteInfo, err := m.CheckUpdate()
 	if err != nil {
@@ -40,6 +44,15 @@ func (m *ModelUpdater) GetStatus() (*types.UpdateStatus, error) {
 		RemoteVersion: remoteInfo.Tag,
 		RemoteTime:    remoteInfo.UpdateTime,
 		NeedsUpdate:   true,
+	}
+
+	targetPath := filepath.Join(m.Config.GetExtractPath(), types.MODEL_FILE)
+	modelExists := fileutil.FileExists(targetPath)
+
+	if !modelExists {
+		status.LocalVersion = "未安装"
+		status.Message = fmt.Sprintf("检测到可用模型: %s", remoteInfo.Tag)
+		return status, nil
 	}
 
 	if localRecord != nil {
@@ -66,8 +79,8 @@ func (m *ModelUpdater) GetStatus() (*types.UpdateStatus, error) {
 			status.Message = fmt.Sprintf("已是最新版本 (当前版本: %s)", status.LocalVersion)
 		}
 	} else {
-		status.LocalVersion = "未安装"
-		status.Message = fmt.Sprintf("检测到可用模型: %s", remoteInfo.Tag)
+		status.LocalVersion = "未知版本"
+		status.Message = fmt.Sprintf("检测到可用模型: %s (无版本记录，将重新安装)", remoteInfo.Tag)
 	}
 
 	return status, nil
@@ -137,6 +150,10 @@ func (m *ModelUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 func (m *ModelUpdater) Run(progress types.ProgressFunc) error {
 	if progress == nil {
 		progress = func(string, float64, string, string, int64, int64, float64, bool) {} // 空函数避免 nil 检查
+	}
+
+	if err := m.EnsureInstalledEngine(); err != nil {
+		return err
 	}
 
 	// 执行更新前 hook

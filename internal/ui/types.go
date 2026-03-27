@@ -17,15 +17,15 @@ const (
 	ViewMenu
 	ViewUpdating
 	ViewConfig
-	ViewConfigEdit      // 配置编辑
-	ViewResult          // 显示更新结果
-	ViewExcludeList     // 排除文件列表
-	ViewExcludeEdit     // 编辑排除模式
-	ViewExcludeAdd      // 添加排除模式
-	ViewFcitxConflict   // Fcitx 目录冲突对话框
-	ViewThemeList       // 主题列表
-	ViewEngineSelector  // 引擎选择界面
-	ViewEnginePrompt    // 多引擎未配置提示对话框
+	ViewConfigEdit     // 配置编辑
+	ViewResult         // 显示更新结果
+	ViewExcludeList    // 排除文件列表
+	ViewExcludeEdit    // 编辑排除模式
+	ViewExcludeAdd     // 添加排除模式
+	ViewFcitxConflict  // Fcitx 目录冲突对话框
+	ViewThemeList      // 主题列表
+	ViewEngineSelector // 引擎选择界面
+	ViewEnginePrompt   // 多引擎未配置提示对话框
 )
 
 // WizardStep 向导步骤

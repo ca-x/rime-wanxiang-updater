@@ -74,11 +74,6 @@ func DetectInstalledEngines() []string {
 		}
 	}
 
-	// 如果没有检测到任何引擎，返回 fcitx5 作为默认
-	if len(installed) == 0 {
-		return []string{"fcitx5"}
-	}
-
 	return installed
 }
 
@@ -95,6 +90,9 @@ func getRimeUserDir(config *types.Config) string {
 	if engine == "" {
 		// 向后兼容：使用旧的 Engine 字段
 		engine = config.Engine
+	}
+	if engine == "" {
+		return ""
 	}
 
 	// 查找引擎的数据目录
@@ -113,8 +111,7 @@ func getRimeUserDir(config *types.Config) string {
 		}
 	}
 
-	// 默认返回 fcitx5 路径
-	return filepath.Join(homeDir, ".local", "share", "fcitx5", "rime")
+	return ""
 }
 
 // GetEngineDataDir 获取指定引擎的数据目录

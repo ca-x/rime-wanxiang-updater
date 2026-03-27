@@ -14,10 +14,6 @@ func TestDetectInstalledEngines(t *testing.T) {
 	// 这个测试会检测实际系统中的引擎
 	engines := DetectInstalledEngines()
 
-	if len(engines) == 0 {
-		t.Error("Expected at least one engine (default)")
-	}
-
 	// 至少应该返回一个引擎名称
 	for _, engine := range engines {
 		if engine == "" {
@@ -68,12 +64,12 @@ func TestGetRimeUserDir(t *testing.T) {
 			expected: filepath.Join(homeDir, ".local", "share", "fcitx5", "rime"),
 		},
 		{
-			name: "Empty config defaults to 鼠须管",
+			name: "Empty config has no engine path",
 			config: &types.Config{
 				PrimaryEngine:    "",
 				InstalledEngines: []string{},
 			},
-			expected: filepath.Join(homeDir, "Library", "Rime"),
+			expected: "",
 		},
 	}
 
