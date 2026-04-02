@@ -209,7 +209,7 @@ func (m *ModelUpdater) Run(progress types.ProgressFunc) error {
 	}
 
 	// 下载文件
-	progress(fmt.Sprintf("准备从 %s 下载模型...", source), 0.15, "", "", 0, 0, 0, false)
+	progress(fmt.Sprintf("准备从 %s 下载模型...", source), 0.15, source, m.UpdateInfo.URL, 0, 0, 0, false)
 	tempFile := filepath.Join(m.Config.CacheDir, fmt.Sprintf("%s_%s.tmp", types.MODEL_FILE, m.UpdateInfo.SHA256))
 	if err := m.DownloadFile(m.UpdateInfo.URL, tempFile, types.MODEL_FILE, source, progress); err != nil {
 		return fmt.Errorf("下载失败: %w", err)

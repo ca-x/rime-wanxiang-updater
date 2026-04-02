@@ -53,12 +53,12 @@ func (b *BaseUpdater) HasUpdate(updateInfo *types.UpdateInfo, recordPath string)
 		return false
 	}
 
-	localTime := b.GetLocalTime(recordPath)
-	if localTime == nil {
+	localRecord := b.GetLocalRecord(recordPath)
+	if localRecord == nil {
 		return true
 	}
 
-	return updateInfo.UpdateTime.After(*localTime)
+	return hasMeaningfulUpdate(localRecord, updateInfo)
 }
 
 // GetLocalTime 获取本地记录的更新时间
@@ -110,32 +110,38 @@ func (b *BaseUpdater) SaveRecord(recordPath string, propertyType, propertyName s
 
 // DownloadFile 下载文件
 func (b *BaseUpdater) DownloadFile(url, dest, fileName, source string, progress types.ProgressFunc) error {
-	// 为下载创建一个没有超时限制的 HTTP 客户端
-	// 因为大文件下载可能需要很长时间
-	downloadClient := &http.Client{
-		Timeout: 0, // 无超时限制
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			// 允许最多10次重定向（Go默认）
-			if len(via) >= 10 {
-				return fmt.Errorf("重定向次数过多")
+	downloadClient := api.NewDownloadHTTPClient(b.Config.Config)
+
+	var (
+		resp *http.Response
+		err  error
+	)
+	for attempt := 1; attempt <= 3; attempt++ {
+		req, reqErr := http.NewRequest("GET", url, nil)
+		if reqErr != nil {
+			return fmt.Errorf("创建下载请求失败: %w", reqErr)
+		}
+
+		req.Header.Set("User-Agent", "RIME-Updater/1.0")
+
+		resp, err = downloadClient.Do(req)
+		if err == nil && !shouldRetryDownload(resp) {
+			break
+		}
+
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+		if attempt == 3 {
+			if err != nil {
+				return fmt.Errorf("下载请求失败: %w", err)
 			}
-			return nil
-		},
-	}
 
-	// 创建下载请求
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return fmt.Errorf("创建下载请求失败: %w", err)
-	}
+			return fmt.Errorf("下载失败，HTTP 状态码: %d", resp.StatusCode)
+		}
 
-	// 设置 User-Agent
-	req.Header.Set("User-Agent", "RIME-Updater/1.0")
-
-	// 发送请求
-	resp, err := downloadClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("下载请求失败: %w", err)
+		time.Sleep(time.Duration(attempt) * time.Second)
 	}
 	defer resp.Body.Close()
 
@@ -225,6 +231,18 @@ func (b *BaseUpdater) DownloadFile(url, dest, fileName, source string, progress 
 	return nil
 }
 
+func shouldRetryDownload(resp *http.Response) bool {
+	if resp == nil {
+		return true
+	}
+
+	if resp.StatusCode == http.StatusRequestTimeout || resp.StatusCode == http.StatusTooManyRequests {
+		return true
+	}
+
+	return resp.StatusCode >= http.StatusInternalServerError
+}
+
 // DownloadFileWithValidation 下载文件并验证大小
 func (b *BaseUpdater) DownloadFileWithValidation(url, dest, fileName, source string, expectedSize int64, progress types.ProgressFunc) error {
 	// 调用下载方法
@@ -267,6 +285,64 @@ func (b *BaseUpdater) CompareHash(remoteHash, filePath string) bool {
 	}
 
 	return remoteHash == localHash
+}
+
+func hasMeaningfulUpdate(localRecord *types.UpdateRecord, updateInfo *types.UpdateInfo) bool {
+	if localRecord == nil {
+		return true
+	}
+	if updateInfo == nil {
+		return false
+	}
+	if isSameTrackedAsset(localRecord, updateInfo) {
+		return false
+	}
+	if localRecord.Tag != "" && updateInfo.Tag != "" && localRecord.Tag != updateInfo.Tag {
+		return true
+	}
+
+	return updateInfo.UpdateTime.After(localRecord.UpdateTime)
+}
+
+func isSameTrackedAsset(localRecord *types.UpdateRecord, updateInfo *types.UpdateInfo) bool {
+	if localRecord == nil || updateInfo == nil {
+		return false
+	}
+	if localRecord.Tag == "" || updateInfo.Tag == "" || localRecord.Tag != updateInfo.Tag {
+		return false
+	}
+	if updateInfo.ID != "" && localRecord.CnbID != "" && updateInfo.ID == localRecord.CnbID {
+		return true
+	}
+	if updateInfo.SHA256 != "" && localRecord.SHA256 != "" && updateInfo.SHA256 == localRecord.SHA256 {
+		return true
+	}
+
+	return false
+}
+
+// canReuseCachedAsset reports whether the cached download still matches the remote asset.
+func (b *BaseUpdater) canReuseCachedAsset(
+	localRecord *types.UpdateRecord,
+	updateInfo *types.UpdateInfo,
+	filePath string,
+	compareHash func(string, string) bool,
+) bool {
+	if localRecord == nil || updateInfo == nil {
+		return false
+	}
+	if hasMeaningfulUpdate(localRecord, updateInfo) {
+		return false
+	}
+	expectedHash := updateInfo.SHA256
+	if expectedHash == "" {
+		expectedHash = localRecord.SHA256
+	}
+	if expectedHash == "" {
+		return false
+	}
+
+	return compareHash(expectedHash, filePath)
 }
 
 // CleanOldFiles 清理旧文件

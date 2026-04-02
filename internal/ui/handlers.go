@@ -101,22 +101,22 @@ func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "1":
 		m.State = ViewUpdating
 		m.Updating = true
-		m.ProgressMsg = "检查所有更新..."
+		m.ProgressMsg = m.runtimeText("检查所有更新...")
 		return m, m.sendCommand(controller.Command{Type: controller.CmdAutoUpdate})
 	case "2":
 		m.State = ViewUpdating
 		m.Updating = true
-		m.ProgressMsg = "检查词库更新..."
+		m.ProgressMsg = m.runtimeText("检查词库更新...")
 		return m, m.sendCommand(controller.Command{Type: controller.CmdUpdateDict})
 	case "3":
 		m.State = ViewUpdating
 		m.Updating = true
-		m.ProgressMsg = "检查方案更新..."
+		m.ProgressMsg = m.runtimeText("检查方案更新...")
 		return m, m.sendCommand(controller.Command{Type: controller.CmdUpdateScheme})
 	case "4":
 		m.State = ViewUpdating
 		m.Updating = true
-		m.ProgressMsg = "检查模型更新..."
+		m.ProgressMsg = m.runtimeText("检查模型更新...")
 		return m, m.sendCommand(controller.Command{Type: controller.CmdUpdateModel})
 	case "5":
 		m.State = ViewConfig
@@ -145,22 +145,22 @@ func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case 0:
 			m.State = ViewUpdating
 			m.Updating = true
-			m.ProgressMsg = "检查所有更新..."
+			m.ProgressMsg = m.runtimeText("检查所有更新...")
 			return m, m.sendCommand(controller.Command{Type: controller.CmdAutoUpdate})
 		case 1:
 			m.State = ViewUpdating
 			m.Updating = true
-			m.ProgressMsg = "检查词库更新..."
+			m.ProgressMsg = m.runtimeText("检查词库更新...")
 			return m, m.sendCommand(controller.Command{Type: controller.CmdUpdateDict})
 		case 2:
 			m.State = ViewUpdating
 			m.Updating = true
-			m.ProgressMsg = "检查方案更新..."
+			m.ProgressMsg = m.runtimeText("检查方案更新...")
 			return m, m.sendCommand(controller.Command{Type: controller.CmdUpdateScheme})
 		case 3:
 			m.State = ViewUpdating
 			m.Updating = true
-			m.ProgressMsg = "检查模型更新..."
+			m.ProgressMsg = m.runtimeText("检查模型更新...")
 			return m, m.sendCommand(controller.Command{Type: controller.CmdUpdateModel})
 		case 4:
 			m.State = ViewConfig
@@ -207,6 +207,8 @@ func (m Model) handleConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.Cfg.Config.AutoUpdate {
 			maxChoice++ // AutoUpdateCountdown
 		}
+
+		maxChoice++ // Language
 
 		maxChoice++ // ProxyEnabled
 
@@ -255,6 +257,8 @@ func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 	if m.Cfg.Config.AutoUpdate {
 		configItems = append(configItems, "auto_update_countdown")
 	}
+
+	configItems = append(configItems, "language")
 
 	configItems = append(configItems, "proxy_enabled")
 
@@ -320,6 +324,8 @@ func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 			}
 		case "auto_update_countdown":
 			m.EditingValue = fmt.Sprintf("%d", m.Cfg.Config.AutoUpdateCountdown)
+		case "language":
+			m.EditingValue = m.Cfg.Config.Language
 		case "proxy_enabled":
 			if m.Cfg.Config.ProxyEnabled {
 				m.EditingValue = "true"
@@ -363,6 +369,7 @@ func (m Model) startConfigEdit() (tea.Model, tea.Cmd) {
 func (m Model) handleConfigEditInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	isBooleanField := m.EditingKey == "use_mirror" || m.EditingKey == "auto_update" || m.EditingKey == "proxy_enabled" ||
 		m.EditingKey == "fcitx_compat" || m.EditingKey == "fcitx_use_link" || m.EditingKey == "theme_adaptive"
+	isLanguageField := m.EditingKey == "language"
 
 	switch msg.String() {
 	case "ctrl+c":
@@ -375,7 +382,7 @@ func (m Model) handleConfigEditInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m.saveConfigEdit()
 	case "backspace":
-		if !isBooleanField && len(m.EditingValue) > 0 {
+		if !isBooleanField && !isLanguageField && len(m.EditingValue) > 0 {
 			m.EditingValue = m.EditingValue[:len(m.EditingValue)-1]
 		}
 	default:
@@ -391,6 +398,19 @@ func (m Model) handleConfigEditInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.EditingValue = "false"
 				} else {
 					m.EditingValue = "true"
+				}
+			}
+		} else if isLanguageField {
+			switch msg.String() {
+			case "1":
+				m.EditingValue = "zh-CN"
+			case "2":
+				m.EditingValue = "en"
+			case "left", "right", "up", "down":
+				if m.EditingValue == "en" {
+					m.EditingValue = "zh-CN"
+				} else {
+					m.EditingValue = "en"
 				}
 			}
 		} else {
@@ -424,6 +444,8 @@ func (m Model) saveConfigEdit() (tea.Model, tea.Cmd) {
 			m.Cfg.Config.AutoUpdateCountdown = countdown
 			m.AutoUpdateCountdown = countdown
 		}
+	case "language":
+		m.Cfg.Config.Language = m.EditingValue
 	case "proxy_enabled":
 		m.Cfg.Config.ProxyEnabled = m.EditingValue == "true"
 	case "fcitx_compat":

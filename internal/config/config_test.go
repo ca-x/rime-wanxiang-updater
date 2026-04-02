@@ -220,6 +220,10 @@ func TestCreateDefaultConfig(t *testing.T) {
 		t.Error("Expected UseMirror to be true by default")
 	}
 
+	if config.Language != "zh-CN" {
+		t.Errorf("Expected Language to be zh-CN by default, got %q", config.Language)
+	}
+
 	if config.AutoUpdateCountdown != 5 {
 		t.Error("Expected AutoUpdateCountdown to be 5 by default")
 	}

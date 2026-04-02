@@ -3,8 +3,6 @@ package ui
 import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/list"
-	"github.com/lucasb-eyer/go-colorful"
-	"github.com/muesli/gamut"
 	"runtime"
 	"strings"
 )
@@ -14,28 +12,12 @@ var (
 	neonCyan      = lipgloss.AdaptiveColor{Light: "#008B8B", Dark: "#00FFFF"} // 霓虹青色
 	neonMagenta   = lipgloss.AdaptiveColor{Light: "#8B008B", Dark: "#FF00FF"} // 霓虹品红
 	neonGreen     = lipgloss.AdaptiveColor{Light: "#008000", Dark: "#00FF41"} // 霓虹绿（矩阵代码）
-	neonPink      = lipgloss.AdaptiveColor{Light: "#C71585", Dark: "#FF10F0"} // 霓虹粉
 	neonOrange    = lipgloss.AdaptiveColor{Light: "#FF4500", Dark: "#FF6600"} // 霓虹橙
-	neonBlue      = lipgloss.AdaptiveColor{Light: "#0000CD", Dark: "#0080FF"} // 霓虹蓝
 	neonPurple    = lipgloss.AdaptiveColor{Light: "#6A0DAD", Dark: "#B026FF"} // 霓虹紫
 	neonYellow    = lipgloss.AdaptiveColor{Light: "#DAA520", Dark: "#FFFF00"} // 霓虹黄
-	darkBg        = lipgloss.AdaptiveColor{Light: "#F0F0F0", Dark: "#0A0E27"} // 深色背景
-	darkBg2       = lipgloss.AdaptiveColor{Light: "#E0E0E0", Dark: "#1A1F3A"} // 次级深色背景
 	glitchRed     = lipgloss.AdaptiveColor{Light: "#DC143C", Dark: "#FF0040"} // 故障红
 	terminalGreen = lipgloss.AdaptiveColor{Light: "#008000", Dark: "#00FF00"} // 终端绿
-	shadowGray    = lipgloss.AdaptiveColor{Light: "#A9A9A9", Dark: "#1C1C28"} // 阴影灰
 	gridColor     = lipgloss.AdaptiveColor{Light: "#C0C0C0", Dark: "#2A2F4A"} // 网格线颜色
-
-	// ASCII 艺术标题
-	asciiLogo = `
-╔═══════════════════════════════════════════════════════════════╗
-║  ██████╗ ██╗███╗   ███╗███████╗    ██╗    ██╗ █████╗ ███╗   ██╗║
-║  ██╔══██╗██║████╗ ████║██╔════╝    ██║    ██║██╔══██╗████╗  ██║║
-║  ██████╔╝██║██╔████╔██║█████╗      ██║ █╗ ██║███████║██╔██╗ ██║║
-║  ██╔══██╗██║██║╚██╔╝██║██╔══╝      ██║███╗██║██╔══██║██║╚██╗██║║
-║  ██║  ██║██║██║ ╚═╝ ██║███████╗    ╚███╔███╔╝██║  ██║██║ ╚████║║
-║  ╚═╝  ╚═╝╚═╝╚═╝     ╚═╝╚══════╝     ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═══╝║
-╚═══════════════════════════════════════════════════════════════╝`
 
 	scanLine = "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
 	gridLine = "░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░"
@@ -152,7 +134,7 @@ var (
 
 	// 闪烁效果样式
 	blinkStyle = lipgloss.NewStyle().
-			Foreground(neonPink).
+			Foreground(neonMagenta).
 			Bold(true).
 			Blink(true)
 
@@ -171,8 +153,7 @@ var (
 
 	// 版本号样式
 	versionStyle = lipgloss.NewStyle().
-			Foreground(neonPurple).
-			Italic(true)
+			Foreground(gridColor)
 
 	// 状态栏样式
 	statusBarStyle = lipgloss.NewStyle().
@@ -190,9 +171,6 @@ var (
 				Foreground(lipgloss.AdaptiveColor{Light: "#343433", Dark: "#C1C6B2"}).
 				Background(lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#353533"}).
 				Padding(0, 1)
-
-	// 渐变色调色板（从粉色到黄色）
-	titleGradient = gamut.Blends(lipgloss.Color("#F25D94"), lipgloss.Color("#EDFF82"), 30)
 
 	// 对话框样式
 	dialogBoxStyle = lipgloss.NewStyle().
@@ -231,27 +209,17 @@ var (
 
 // RenderGradientTitle 渲染渐变色标题（无边框）
 func RenderGradientTitle(text string) string {
-	var result strings.Builder
-	chars := []rune(text)
+	title := lipgloss.NewStyle().
+		Foreground(neonCyan).
+		Bold(true).
+		Render(text)
 
-	for i, ch := range chars {
-		colorIdx := (i * len(titleGradient)) / len(chars)
-		if colorIdx >= len(titleGradient) {
-			colorIdx = len(titleGradient) - 1
-		}
+	rule := lipgloss.NewStyle().
+		Foreground(gridColor).
+		Render("────")
 
-		color, _ := colorful.MakeColor(titleGradient[colorIdx])
-		style := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(color.Hex())).
-			Bold(true)
-
-		result.WriteString(style.Render(string(ch)))
-	}
-
-	// 居中显示，宽度65
-	centeredResult := lipgloss.PlaceHorizontal(65, lipgloss.Center, result.String())
-
-	return "\n" + centeredResult + "\n"
+	line := lipgloss.JoinHorizontal(lipgloss.Center, rule, " ", title, " ", rule)
+	return "\n" + lipgloss.PlaceHorizontal(65, lipgloss.Center, line) + "\n"
 }
 
 // RenderStatusBar 渲染底部状态栏（保留用于向后兼容）
@@ -284,38 +252,147 @@ func RenderStatusBar(version, engine, source string) string {
 	return statusBarStyle.Width(width).Render(bar)
 }
 
-// RenderStatusBarThemed 渲染底部状态栏（主题化版本）
-func RenderStatusBarThemed(s *Styles, version, engine, source, scheme string) string {
-	const width = 65
+// RenderStatusBarThemed 渲染底部状态栏（主题化版本）。
+func RenderStatusBarThemed(
+	s *Styles,
+	width int,
+	versionLabel string,
+	engineLabel string,
+	sourceLabel string,
+	schemeLabel string,
+	version string,
+	engine string,
+	source string,
+	scheme string,
+) string {
+	bar := buildStatusBarLine(s, width, versionLabel, engineLabel, sourceLabel, schemeLabel, version, engine, source, scheme)
 
-	versionKey := s.StatusKey.Render("版本")
-	versionVal := s.StatusValue.Render(version)
+	return lipgloss.NewStyle().
+		Width(width).
+		Align(lipgloss.Center).
+		Render(bar)
+}
 
-	engineKey := s.StatusKey.Render("引擎")
-	engineVal := s.StatusValue.Render(engine)
-
-	sourceKey := s.StatusKey.Render("下载源")
-	sourceVal := s.StatusValue.Render(source)
-
-	schemeKey := s.StatusKey.Render("方案")
-	schemeVal := s.StatusValue.Render(scheme)
-
-	// 拼接状态栏
-	bar := lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		versionKey, versionVal, " ",
-		engineKey, engineVal, " ",
-		sourceKey, sourceVal, " ",
-		schemeKey, schemeVal,
-	)
-
-	// 填充到固定宽度
-	barWidth := lipgloss.Width(bar)
-	if barWidth < width {
-		bar += strings.Repeat(" ", width-barWidth)
+func buildStatusBarLine(
+	s *Styles,
+	width int,
+	versionLabel string,
+	engineLabel string,
+	sourceLabel string,
+	schemeLabel string,
+	version string,
+	engine string,
+	source string,
+	scheme string,
+) string {
+	separator := s.StatusBar.Render("  ·  ")
+	fullParts := []string{
+		s.StatusKey.Render(versionLabel) + " " + s.StatusValue.Render(version),
+		s.StatusKey.Render(engineLabel) + " " + s.StatusValue.Render(engine),
+		s.StatusKey.Render(sourceLabel) + " " + s.StatusValue.Render(source),
+		s.StatusKey.Render(schemeLabel) + " " + s.StatusValue.Render(scheme),
+	}
+	fullBar := strings.Join(fullParts, separator)
+	if lipgloss.Width(fullBar) <= width {
+		return fullBar
 	}
 
-	return s.StatusBar.Width(width).Render(bar)
+	values := []string{version, engine, source, scheme}
+	compactBar := renderStatusBarValues(s, values)
+	if lipgloss.Width(compactBar) <= width {
+		return compactBar
+	}
+
+	return renderStatusBarValues(s, compressStatusBarValues(values, width, lipgloss.Width(separator)))
+}
+
+func renderStatusBarValues(s *Styles, values []string) string {
+	renderedValues := make([]string, 0, len(values))
+	for _, value := range values {
+		renderedValues = append(renderedValues, s.StatusValue.Render(value))
+	}
+
+	return strings.Join(renderedValues, s.StatusBar.Render("  ·  "))
+}
+
+func compressStatusBarValues(values []string, width int, separatorWidth int) []string {
+	compressed := append([]string(nil), values...)
+	if len(compressed) == 0 {
+		return compressed
+	}
+
+	minWidths := make([]int, len(compressed))
+	for i := range compressed {
+		minWidths[i] = 4
+		if lipgloss.Width(compressed[i]) < minWidths[i] {
+			minWidths[i] = lipgloss.Width(compressed[i])
+		}
+	}
+
+	for statusBarValuesWidth(compressed, separatorWidth) > width {
+		index := widestStatusBarValue(compressed)
+		if lipgloss.Width(compressed[index]) <= minWidths[index] {
+			break
+		}
+
+		nextWidth := lipgloss.Width(compressed[index]) - 1
+		if nextWidth < minWidths[index] {
+			nextWidth = minWidths[index]
+		}
+		compressed[index] = truncateStatusBarValue(compressed[index], nextWidth)
+	}
+
+	return compressed
+}
+
+func statusBarValuesWidth(values []string, separatorWidth int) int {
+	width := 0
+	for i, value := range values {
+		if i > 0 {
+			width += separatorWidth
+		}
+		width += lipgloss.Width(value)
+	}
+
+	return width
+}
+
+func widestStatusBarValue(values []string) int {
+	index := 0
+	maxWidth := lipgloss.Width(values[0])
+	for i := 1; i < len(values); i++ {
+		valueWidth := lipgloss.Width(values[i])
+		if valueWidth > maxWidth {
+			index = i
+			maxWidth = valueWidth
+		}
+	}
+
+	return index
+}
+
+func truncateStatusBarValue(value string, width int) string {
+	if width <= 0 || lipgloss.Width(value) <= width {
+		return value
+	}
+	if width == 1 {
+		return "…"
+	}
+
+	ellipsisWidth := lipgloss.Width("…")
+	runes := []rune(value)
+	currentWidth := 0
+	var b strings.Builder
+	for _, r := range runes {
+		runeWidth := lipgloss.Width(string(r))
+		if currentWidth+runeWidth+ellipsisWidth > width {
+			break
+		}
+		b.WriteRune(r)
+		currentWidth += runeWidth
+	}
+
+	return b.String() + "…"
 }
 
 // RenderBootSequence 渲染启动序列状态
@@ -323,7 +400,7 @@ func RenderBootSequence(appVersion string) string {
 	var b strings.Builder
 
 	// 标题行
-	title := versionStyle.Render(">>> UPDATER SYSTEM " + appVersion + " <<<")
+	title := versionStyle.Render("Updater System " + appVersion)
 	b.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(title) + "\n\n")
 
 	// 使用 list 渲染启动项
@@ -352,7 +429,7 @@ func RenderBootSequence(appVersion string) string {
 
 	// 添加空行和启动界面提示
 	b.WriteString("\n")
-	launchMsg := "  " + neonGreenStyle.Render("⚡") + " " + configValueStyle.Render("LAUNCHING MAIN INTERFACE...")
+	launchMsg := "  " + neonGreenStyle.Render("•") + " " + configValueStyle.Render("Launching main interface...")
 	b.WriteString(launchMsg + "\n")
 
 	return b.String()
@@ -360,8 +437,7 @@ func RenderBootSequence(appVersion string) string {
 
 // RenderHeader 渲染简洁的页面标题（用于主界面，不显示启动序列）
 func RenderHeader(appVersion string) string {
-	// 只显示简洁的版本信息
-	title := versionStyle.Render(">>> RIME-WANXIANG UPDATER " + appVersion + " <<<")
+	title := versionStyle.Render("Rime Wanxiang Updater " + appVersion)
 	return lipgloss.NewStyle().Align(lipgloss.Center).Width(65).Render(title) + "\n"
 }
 

@@ -28,8 +28,26 @@ func NewClient(config *types.Config) *Client {
 
 // GetHTTPClient 返回配置了代理的 HTTP 客户端
 func getHTTPClient(config *types.Config) *http.Client {
-	// 使用更短的超时时间（10秒）来避免长时间卡住
-	timeout := 10 * time.Second
+	return buildHTTPClient(config, 10*time.Second)
+}
+
+// NewDownloadHTTPClient 返回用于下载资源的 HTTP 客户端。
+func NewDownloadHTTPClient(config *types.Config) *http.Client {
+	client := buildHTTPClient(config, 0)
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return fmt.Errorf("重定向次数过多")
+		}
+		return nil
+	}
+
+	return client
+}
+
+func buildHTTPClient(config *types.Config, timeout time.Duration) *http.Client {
+	if config == nil {
+		return &http.Client{Timeout: timeout}
+	}
 
 	if !config.ProxyEnabled {
 		return &http.Client{

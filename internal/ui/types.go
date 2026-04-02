@@ -70,7 +70,9 @@ type Model struct {
 	Updating         bool
 	Progress         progress.Model
 	ProgressMsg      string
+	CurrentComponent string
 	DownloadSource   string
+	DownloadURL      string
 	DownloadFileName string
 	Downloaded       int64
 	TotalSize        int64

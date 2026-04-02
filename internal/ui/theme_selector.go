@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"rime-wanxiang-updater/internal/version"
-
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -127,58 +125,40 @@ func (m *Model) InitThemeListView(editingKey string) {
 func (m Model) renderThemeList() string {
 	var b strings.Builder
 
-	// Logo
-	b.WriteString(logoStyle.Render(asciiLogo) + "\n")
+	b.WriteString(m.renderHeaderBlock())
 
-	// 标题
-	header := RenderHeader(version.GetVersion())
-	b.WriteString(header + "\n")
-
-	b.WriteString(m.Styles.ScanLine.Render(scanLine) + "\n\n")
-
-	// 标题
 	var titleText string
 	switch m.EditingKey {
 	case "theme_dark":
-		titleText = "🌙 选择深色主题 🌙"
+		titleText = "🌙 " + m.t("theme.select.dark") + " 🌙"
 	case "theme_light":
-		titleText = "☀️ 选择浅色主题 ☀️"
+		titleText = "☀️ " + m.t("theme.select.light") + " ☀️"
 	default:
-		titleText = "🎨 选择主题 🎨"
+		titleText = "🎨 " + m.t("theme.select.title") + " 🎨"
 	}
 	title := RenderGradientTitle(titleText)
 	b.WriteString(title + "\n\n")
 
-	// 当前主题信息和背景检测
 	currentInfo := lipgloss.NewStyle().
 		Foreground(m.Styles.Primary).
-		Render(fmt.Sprintf("当前: %s", m.ThemeManager.CurrentName()))
+		Render(m.t("theme.current", m.ThemeManager.CurrentName()))
 
-	// 显示终端背景检测结果
 	bgInfo := ""
 	if m.ThemeManager.IsAdaptive() {
 		bg := m.ThemeManager.Background()
-		bgType := "暗色"
+		bgType := m.t("theme.bg.dark")
 		if !bg.IsDark() {
-			bgType = "亮色"
+			bgType = m.t("theme.bg.light")
 		}
 		bgInfo = lipgloss.NewStyle().
 			Foreground(m.Styles.Warning).
-			Render(fmt.Sprintf(" | 自适应模式已启用 (检测: %s背景)", bgType))
+			Render(m.t("theme.adaptive.current", bgType))
 	}
 
 	b.WriteString(currentInfo + bgInfo + "\n\n")
 
-	// 主题列表
-	listBox := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.Styles.Secondary).
-		Padding(1, 2).
-		Width(50)
-
 	var listContent strings.Builder
 	for i, themeName := range m.ThemeList {
-		// 获取主题信息
 		scheme, _ := m.ThemeManager.GetScheme(themeName)
 		var displayName string
 		if scheme != nil {
@@ -187,38 +167,37 @@ func (m Model) renderThemeList() string {
 			displayName = themeName
 		}
 
-		// 显示颜色预览
 		if scheme != nil {
 			preview := renderThemePreview(scheme.Base08, scheme.Base0B, scheme.Base0D, scheme.Base0E)
 			displayName = displayName + " " + preview
 		}
 
 		cursor := "  "
-		style := lipgloss.NewStyle().Foreground(m.Styles.Primary)
+		style := lipgloss.NewStyle().
+			Foreground(m.Styles.Foreground).
+			PaddingLeft(1)
 
 		if m.ThemeListChoice == i {
-			cursor = "▸ "
-			style = style.Bold(true).Foreground(m.Styles.Secondary)
+			cursor = "› "
+			style = m.Styles.SelectedMenuItem
 		}
 
 		listContent.WriteString(style.Render(cursor+displayName) + "\n")
 	}
 
-	b.WriteString(listBox.Render(listContent.String()) + "\n\n")
+	b.WriteString(m.renderPanel(strings.TrimSuffix(listContent.String(), "\n"), m.Styles.Secondary) + "\n\n")
 
-	// 网格线
 	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n\n")
 
-	// 提示 - 根据是否是快速切换显示不同提示
 	var hint string
 	if m.EditingKey == "theme_quick" {
-		hint = m.Styles.Hint.Render("[>] 快速切换会关闭自适应模式 | [Enter] Select | [Q]/[ESC] Cancel")
+		hint = m.Styles.Hint.Render(m.t("theme.quick_hint"))
 	} else {
-		hint = m.Styles.Hint.Render("[>] Navigate: J/K or Arrow Keys | [Enter] Select | [Q]/[ESC] Cancel")
+		hint = m.Styles.Hint.Render(m.t("theme.hint"))
 	}
 	b.WriteString(hint)
 
-	return m.Styles.Container.Render(b.String())
+	return m.renderScreen(b.String())
 }
 
 // renderThemePreview 渲染主题颜色预览

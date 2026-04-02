@@ -3,6 +3,7 @@ package ui
 import (
 	"cmp"
 	"os"
+	"strings"
 	"time"
 
 	"rime-wanxiang-updater/internal/config"
@@ -21,7 +22,15 @@ func NewModel(
 	commandChan chan<- controller.Command,
 	eventChan <-chan controller.Event,
 ) Model {
-	p := progress.New(progress.WithDefaultGradient())
+	fillColor := "#5F87AF"
+	if currentTheme := themeMgr.Current(); currentTheme != nil {
+		fillColor = string(currentTheme.Blue)
+	}
+
+	p := progress.New(
+		progress.WithSolidFill(fillColor),
+		progress.WithoutPercentage(),
+	)
 	p.Width = 60
 
 	rimeStatus := detector.CheckRimeInstallation()
@@ -105,10 +114,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleResultInput(msg)
 		case ViewUpdating:
 			switch msg.String() {
-			case "q", "esc":
-				m.State = ViewMenu
-				m.Updating = false
-				return m, nil
 			case "ctrl+c":
 				return m, tea.Quit
 			}
@@ -120,7 +125,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.AutoUpdateCountdown--
 			if m.AutoUpdateCountdown <= 0 {
 				m.State = ViewUpdating
-				m.ProgressMsg = "检查所有更新..."
+				m.ProgressMsg = m.runtimeText("检查所有更新...")
 				m.AutoUpdateCancelled = true
 				return m, m.sendCommand(controller.Command{Type: controller.CmdAutoUpdate})
 			}
@@ -170,10 +175,16 @@ func (m Model) handleControllerEvent(evt controller.Event) (tea.Model, tea.Cmd) 
 	switch evt.Type {
 	case controller.EvtProgressUpdate:
 		payload := evt.Payload.(controller.ProgressUpdatePayload)
-		m.ProgressMsg = payload.Message
+		m.CurrentComponent = payload.Component
+		m.ProgressMsg = m.runtimeText(payload.Message)
 		m.IsDownloading = payload.IsDownload
-		m.DownloadSource = payload.Source
-		m.DownloadFileName = payload.FileName
+		m.DownloadSource = m.sourceLabel(payload.Source)
+		if isDownloadURL(payload.FileName) {
+			m.DownloadURL = payload.FileName
+			m.DownloadFileName = ""
+		} else {
+			m.DownloadFileName = payload.FileName
+		}
 		m.Downloaded = payload.Downloaded
 		m.TotalSize = payload.TotalSize
 		m.DownloadSpeed = payload.Speed
@@ -185,9 +196,17 @@ func (m Model) handleControllerEvent(evt controller.Event) (tea.Model, tea.Cmd) 
 		payload := evt.Payload.(controller.UpdateCompletePayload)
 		m.Updating = false
 		m.State = ViewResult
+		m.CurrentComponent = ""
+		m.IsDownloading = false
+		m.DownloadSource = ""
+		m.DownloadURL = ""
+		m.DownloadFileName = ""
+		m.Downloaded = 0
+		m.TotalSize = 0
+		m.DownloadSpeed = 0
 		m.ResultSuccess = true
 		m.ResultSkipped = payload.Skipped
-		m.ResultMsg = payload.Message
+		m.ResultMsg = m.runtimeText(payload.Message)
 
 		if payload.UpdatedComponents != nil {
 			m.AutoUpdateResult = &AutoUpdateDetails{
@@ -205,8 +224,16 @@ func (m Model) handleControllerEvent(evt controller.Event) (tea.Model, tea.Cmd) 
 		payload := evt.Payload.(controller.UpdateCompletePayload)
 		m.Updating = false
 		m.State = ViewResult
+		m.CurrentComponent = ""
+		m.IsDownloading = false
+		m.DownloadSource = ""
+		m.DownloadURL = ""
+		m.DownloadFileName = ""
+		m.Downloaded = 0
+		m.TotalSize = 0
+		m.DownloadSpeed = 0
 		m.ResultSuccess = false
-		m.ResultMsg = payload.Message
+		m.ResultMsg = m.runtimeText(payload.Message)
 		m.AutoUpdateResult = nil
 
 		return m, listenForEvents(m.EventChan)
@@ -215,9 +242,17 @@ func (m Model) handleControllerEvent(evt controller.Event) (tea.Model, tea.Cmd) 
 		payload := evt.Payload.(controller.UpdateCompletePayload)
 		m.Updating = false
 		m.State = ViewResult
+		m.CurrentComponent = ""
+		m.IsDownloading = false
+		m.DownloadSource = ""
+		m.DownloadURL = ""
+		m.DownloadFileName = ""
+		m.Downloaded = 0
+		m.TotalSize = 0
+		m.DownloadSpeed = 0
 		m.ResultSuccess = true
 		m.ResultSkipped = true
-		m.ResultMsg = payload.Message
+		m.ResultMsg = m.runtimeText(payload.Message)
 
 		if payload.UpdatedComponents != nil {
 			m.AutoUpdateResult = &AutoUpdateDetails{
@@ -247,6 +282,10 @@ func (m Model) handleControllerEvent(evt controller.Event) (tea.Model, tea.Cmd) 
 	}
 
 	return m, listenForEvents(m.EventChan)
+}
+
+func isDownloadURL(value string) bool {
+	return strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "http://")
 }
 
 // sendCommand sends a command to the controller

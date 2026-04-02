@@ -30,9 +30,9 @@ var SchemeMap = map[string]string{
 // Config 配置结构
 type Config struct {
 	// 引擎配置 - 支持多引擎
-	InstalledEngines []string `json:"-"`              // 运行时检测，不保存到配置文件
-	PrimaryEngine    string   `json:"primary_engine"` // 用户选择的主引擎
-	UpdateEngines    []string `json:"update_engines"` // 用户选择要更新的引擎列表（为空表示未配置）
+	InstalledEngines []string `json:"-"`                // 运行时检测，不保存到配置文件
+	PrimaryEngine    string   `json:"primary_engine"`   // 用户选择的主引擎
+	UpdateEngines    []string `json:"update_engines"`   // 用户选择要更新的引擎列表（为空表示未配置）
 	Engine           string   `json:"engine,omitempty"` // 已弃用：保留用于配置迁移
 
 	SchemeType          string   `json:"scheme_type"`
@@ -46,6 +46,7 @@ type Config struct {
 	ProxyEnabled        bool     `json:"proxy_enabled"`
 	ProxyType           string   `json:"proxy_type"`
 	ProxyAddress        string   `json:"proxy_address"`
+	Language            string   `json:"language"`
 	FcitxCompat         bool     `json:"fcitx_compat"`          // Linux 专用：兼容 ~/.config/fcitx/rime/
 	FcitxUseLink        bool     `json:"fcitx_use_link"`        // Linux 专用：使用软链接（true）还是复制（false）
 	FcitxConflictAction string   `json:"fcitx_conflict_action"` // Linux 专用：目录冲突处理方式 "delete" 或 "backup"，空表示未设置
@@ -95,6 +96,8 @@ type GitHubAsset struct {
 	Name               string    `json:"name"`
 	BrowserDownloadURL string    `json:"browser_download_url"`
 	UpdatedAt          time.Time `json:"updated_at,omitzero"`
+	ID                 string    `json:"-"`
+	SHA256             string    `json:"sha256"`
 	Size               int64     `json:"size"`
 }
 
@@ -111,9 +114,10 @@ type CNBAsset struct {
 	Name       string    `json:"name"`
 	Path       string    `json:"path"`
 	UpdatedAt  time.Time `json:"updated_at,omitzero"`
-	Digest     string    `json:"digest"`
 	ID         string    `json:"id"`
-	SizeInByte int64     `json:"sizeInByte"`
+	HashAlgo   string    `json:"hash_algo"`
+	HashValue  string    `json:"hash_value"`
+	SizeInByte int64     `json:"size_in_byte"`
 }
 
 // ProgressFunc 进度回调函数

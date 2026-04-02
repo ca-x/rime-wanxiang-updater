@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"rime-wanxiang-updater/internal/api"
+	"rime-wanxiang-updater/internal/i18n"
 	"rime-wanxiang-updater/internal/types"
 )
 
@@ -92,6 +93,8 @@ func (m *Manager) loadOrCreateConfig() (*types.Config, error) {
 
 	// 每次启动都重新检测已安装的引擎
 	config.InstalledEngines = DetectInstalledEngines()
+	rawLanguage := config.Language
+	config.Language = string(i18n.Normalize(config.Language))
 
 	// 验证并清理用户配置
 	needsSave := false
@@ -115,6 +118,11 @@ func (m *Manager) loadOrCreateConfig() (*types.Config, error) {
 	// 如果没有主引擎但有已安装的引擎，设置第一个为主引擎
 	if config.PrimaryEngine == "" && len(config.InstalledEngines) > 0 {
 		config.PrimaryEngine = config.InstalledEngines[0]
+		needsSave = true
+	}
+
+	if rawLanguage == "" || config.Language != rawLanguage {
+		config.Language = string(i18n.Normalize(config.Language))
 		needsSave = true
 	}
 
@@ -347,6 +355,7 @@ func createDefaultConfig() *types.Config {
 		ProxyEnabled:        false,
 		ProxyType:           "http",
 		ProxyAddress:        "127.0.0.1:7890",
+		Language:            string(i18n.DefaultLocale),
 		FcitxCompat:         false,
 		FcitxUseLink:        true, // 默认使用软链接
 		FcitxConflictAction: "",   // 默认未设置，首次会询问

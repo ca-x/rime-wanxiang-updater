@@ -68,7 +68,7 @@ func (d *DictUpdater) GetStatus() (*types.UpdateStatus, error) {
 
 		status.LocalVersion = localRecord.Tag
 		status.LocalTime = localRecord.UpdateTime
-		status.NeedsUpdate = remoteInfo.UpdateTime.After(localRecord.UpdateTime)
+		status.NeedsUpdate = hasMeaningfulUpdate(localRecord, remoteInfo)
 
 		if status.NeedsUpdate {
 			status.Message = fmt.Sprintf("发现新版本: %s → %s", localRecord.Tag, remoteInfo.Tag)
@@ -118,6 +118,8 @@ func (d *DictUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 					URL:        asset.BrowserDownloadURL,
 					UpdateTime: asset.UpdatedAt,
 					Tag:        release.TagName,
+					SHA256:     asset.SHA256,
+					ID:         asset.ID,
 					Size:       asset.Size,
 				}, nil
 			}
@@ -170,15 +172,13 @@ func (d *DictUpdater) Run(progress types.ProgressFunc) error {
 	// 校验本地文件：只有当版本未变化且缓存文件哈希匹配时才跳过下载
 	progress("正在校验本地文件...", 0.1, "", "", 0, 0, 0, false)
 	localRecord := d.GetLocalRecord(recordPath)
-	if localRecord != nil && localRecord.SHA256 != "" &&
-		localRecord.Tag == d.UpdateInfo.Tag &&
-		d.CompareHash(localRecord.SHA256, targetFile) {
+	if d.canReuseCachedAsset(localRecord, d.UpdateInfo, targetFile, d.CompareHash) {
 		progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
 		return nil
 	}
 
 	// 下载文件
-	progress(fmt.Sprintf("准备从 %s 下载词库...", source), 0.15, "", "", 0, 0, 0, false)
+	progress(fmt.Sprintf("准备从 %s 下载词库...", source), 0.15, source, d.UpdateInfo.URL, 0, 0, 0, false)
 	tempFile := filepath.Join(d.Config.CacheDir, fmt.Sprintf("temp_dict_%d.zip", time.Now().Unix()))
 	if err := d.DownloadFileWithValidation(d.UpdateInfo.URL, tempFile, d.Config.Config.DictFile, source, d.UpdateInfo.Size, progress); err != nil {
 		return fmt.Errorf("下载失败: %w", err)

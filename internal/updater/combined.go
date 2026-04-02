@@ -89,6 +89,22 @@ type UpdateResult struct {
 	PreviousVersions  map[string]string // 更新前组件版本信息（组件名 -> 版本号）
 }
 
+func (c *CombinedUpdater) resetPlannedUpdateInfo(
+	needsSchemeUpdate bool,
+	needsDictUpdate bool,
+	needsModelUpdate bool,
+) {
+	if needsSchemeUpdate {
+		c.SchemeUpdater.UpdateInfo = nil
+	}
+	if needsDictUpdate {
+		c.DictUpdater.UpdateInfo = nil
+	}
+	if needsModelUpdate {
+		c.ModelUpdater.UpdateInfo = nil
+	}
+}
+
 // RunAllWithProgress 执行所有更新并报告进度
 func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool)) (*UpdateResult, error) {
 	var errors []string
@@ -151,6 +167,11 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 		progress("完成", "已是最新版本", 1.0, "", "", 0, 0, 0, false)
 		return result, nil
 	}
+
+	// FetchAllUpdates 可能在较早时刻缓存了 UpdateInfo。
+	// 真正执行下载前清掉这些快照，让 Run() 重新获取最新元数据，
+	// 避免“刚更新完下一次又补下一遍”的重复下载。
+	c.resetPlannedUpdateInfo(needsSchemeUpdate, needsDictUpdate, needsModelUpdate)
 
 	// 统一在开始前终止进程（只终止一次）
 	progress("准备", "正在终止相关进程...", 0.0, "", "", 0, 0, 0, false)

@@ -102,6 +102,48 @@ func TestHasUpdate(t *testing.T) {
 	}
 }
 
+func TestHasUpdateIgnoresCNBTimeDriftForSameAsset(t *testing.T) {
+	tmpDir := t.TempDir()
+	recordPath := filepath.Join(tmpDir, "test_record.json")
+
+	cfg := &config.Manager{
+		ConfigPath: filepath.Join(tmpDir, "config.json"),
+		Config: &types.Config{
+			SchemeType: "base",
+			UseMirror:  true,
+		},
+	}
+
+	updater := NewBaseUpdater(cfg)
+
+	record := types.UpdateRecord{
+		Name:       "base-dicts.zip",
+		UpdateTime: time.Date(2026, 4, 2, 15, 16, 57, 0, time.UTC),
+		Tag:        "v1.0.0",
+		SHA256:     "same-hash",
+		CnbID:      "asset-123",
+	}
+	data, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent(record) error = %v", err)
+	}
+	if err := os.WriteFile(recordPath, data, 0644); err != nil {
+		t.Fatalf("WriteFile(recordPath) error = %v", err)
+	}
+
+	updateInfo := &types.UpdateInfo{
+		Name:       "base-dicts.zip",
+		UpdateTime: time.Date(2026, 4, 2, 15, 23, 39, 0, time.UTC),
+		Tag:        "v1.0.0",
+		SHA256:     "same-hash",
+		ID:         "asset-123",
+	}
+
+	if updater.HasUpdate(updateInfo, recordPath) {
+		t.Fatal("HasUpdate() = true, want false when CNB reports the same asset with a newer timestamp")
+	}
+}
+
 func TestGetLocalRecord(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.json")
@@ -432,6 +474,46 @@ func TestDownloadFileWithProgress(t *testing.T) {
 
 	if fileInfo.Size() != int64(len(testContent)) {
 		t.Errorf("File size = %d, want %d", fileInfo.Size(), len(testContent))
+	}
+}
+
+func TestDownloadFileRetriesRetryableStatus(t *testing.T) {
+	var requests int
+	testContent := []byte("retry succeeded")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests < 3 {
+			http.Error(w, "temporary upstream failure", http.StatusBadGateway)
+			return
+		}
+
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(testContent)))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(testContent)
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	destFile := filepath.Join(tmpDir, "retry_test")
+	configPath := filepath.Join(tmpDir, "config.json")
+
+	cfg := &config.Manager{
+		ConfigPath: configPath,
+		Config: &types.Config{
+			SchemeType: "base",
+			UseMirror:  true,
+		},
+	}
+
+	updater := NewBaseUpdater(cfg)
+
+	if err := updater.DownloadFile(server.URL, destFile, "retry.dat", "test-source", nil); err != nil {
+		t.Fatalf("DownloadFile() error = %v, want nil", err)
+	}
+
+	if requests != 3 {
+		t.Fatalf("request count = %d, want 3", requests)
 	}
 }
 

@@ -70,10 +70,17 @@ func (c *Client) FetchCNBReleases(owner, repo, tag string) ([]types.GitHubReleas
 
 		var assets []types.GitHubAsset
 		for _, cnbAsset := range cnbRelease.Assets {
+			sha256 := ""
+			if strings.EqualFold(cnbAsset.HashAlgo, "sha256") {
+				sha256 = cnbAsset.HashValue
+			}
+
 			assets = append(assets, types.GitHubAsset{
 				Name:               cnbAsset.Name,
 				BrowserDownloadURL: "https://cnb.cool" + cnbAsset.Path,
 				UpdatedAt:          cnbAsset.UpdatedAt,
+				ID:                 cnbAsset.ID,
+				SHA256:             sha256,
 				Size:               cnbAsset.SizeInByte,
 			})
 		}

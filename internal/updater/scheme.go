@@ -68,7 +68,7 @@ func (s *SchemeUpdater) GetStatus() (*types.UpdateStatus, error) {
 
 		status.LocalVersion = localRecord.Tag
 		status.LocalTime = localRecord.UpdateTime
-		status.NeedsUpdate = remoteInfo.UpdateTime.After(localRecord.UpdateTime)
+		status.NeedsUpdate = hasMeaningfulUpdate(localRecord, remoteInfo)
 
 		if status.NeedsUpdate {
 			status.Message = fmt.Sprintf("发现新版本: %s → %s", localRecord.Tag, remoteInfo.Tag)
@@ -108,22 +108,54 @@ func (s *SchemeUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 		return nil, fmt.Errorf("未找到任何发布版本")
 	}
 
-	for _, release := range releases {
-		for _, asset := range release.Assets {
-			if asset.Name == s.Config.Config.SchemeFile {
-				return &types.UpdateInfo{
-					Name:        asset.Name,
-					URL:         asset.BrowserDownloadURL,
-					UpdateTime:  asset.UpdatedAt,
-					Tag:         release.TagName,
-					Description: release.Body,
-					Size:        asset.Size,
-				}, nil
-			}
-		}
+	if info, ok := findSchemeRelease(releases, s.Config.Config.SchemeFile); ok {
+		return info, nil
 	}
 
 	return nil, fmt.Errorf("未找到匹配的方案文件: %s", s.Config.Config.SchemeFile)
+}
+
+func findSchemeRelease(releases []types.GitHubRelease, schemeFile string) (*types.UpdateInfo, bool) {
+	if info, ok := findSchemeReleaseWithTagFilter(releases, schemeFile, func(tag string) bool {
+		return tag != types.CNB_DICT_TAG
+	}); ok {
+		return info, true
+	}
+
+	return findSchemeReleaseWithTagFilter(releases, schemeFile, func(string) bool {
+		return true
+	})
+}
+
+func findSchemeReleaseWithTagFilter(
+	releases []types.GitHubRelease,
+	schemeFile string,
+	allowTag func(string) bool,
+) (*types.UpdateInfo, bool) {
+	for _, release := range releases {
+		if !allowTag(release.TagName) {
+			continue
+		}
+
+		for _, asset := range release.Assets {
+			if asset.Name != schemeFile {
+				continue
+			}
+
+			return &types.UpdateInfo{
+				Name:        asset.Name,
+				URL:         asset.BrowserDownloadURL,
+				UpdateTime:  asset.UpdatedAt,
+				Tag:         release.TagName,
+				Description: release.Body,
+				SHA256:      asset.SHA256,
+				ID:          asset.ID,
+				Size:        asset.Size,
+			}, true
+		}
+	}
+
+	return nil, false
 }
 
 // Run 执行更新
@@ -169,15 +201,13 @@ func (s *SchemeUpdater) Run(progress types.ProgressFunc) error {
 	// 校验本地文件：只有当版本未变化且缓存文件哈希匹配时才跳过下载
 	progress("正在校验本地文件...", 0.1, "", "", 0, 0, 0, false)
 	localRecord := s.GetLocalRecord(recordPath)
-	if localRecord != nil && localRecord.SHA256 != "" &&
-		localRecord.Tag == s.UpdateInfo.Tag &&
-		s.CompareHash(localRecord.SHA256, targetFile) {
+	if s.canReuseCachedAsset(localRecord, s.UpdateInfo, targetFile, s.CompareHash) {
 		progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
 		return nil
 	}
 
 	// 下载文件
-	progress(fmt.Sprintf("准备从 %s 下载方案...", source), 0.15, "", "", 0, 0, 0, false)
+	progress(fmt.Sprintf("准备从 %s 下载方案...", source), 0.15, source, s.UpdateInfo.URL, 0, 0, 0, false)
 	tempFile := filepath.Join(s.Config.CacheDir, fmt.Sprintf("temp_scheme_%d.zip", time.Now().Unix()))
 	if err := s.DownloadFileWithValidation(s.UpdateInfo.URL, tempFile, s.Config.Config.SchemeFile, source, s.UpdateInfo.Size, progress); err != nil {
 		return fmt.Errorf("下载失败: %w", err)
