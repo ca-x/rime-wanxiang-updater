@@ -136,8 +136,7 @@ func (m Model) renderThemeList() string {
 	default:
 		titleText = "🎨 " + m.t("theme.select.title") + " 🎨"
 	}
-	title := RenderGradientTitle(titleText)
-	b.WriteString(title + "\n\n")
+	b.WriteString(m.renderTitle(titleText) + "\n\n")
 
 	currentInfo := lipgloss.NewStyle().
 		Foreground(m.Styles.Primary).
@@ -195,7 +194,8 @@ func (m Model) renderThemeList() string {
 	} else {
 		hint = m.Styles.Hint.Render(m.t("theme.hint"))
 	}
-	b.WriteString(hint)
+	b.WriteString(hint + "\n\n")
+	b.WriteString(m.renderHintStrip(m.t("ui.hint.nav"), m.t("ui.hint.apply_theme"), m.t("ui.hint.back")))
 
 	return m.renderScreen(b.String())
 }

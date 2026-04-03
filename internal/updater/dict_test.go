@@ -36,9 +36,8 @@ func TestDictUpdaterCheckUpdate(t *testing.T) {
 	t.Logf("更新时间: %s", info.UpdateTime)
 	t.Logf("下载地址: %s", info.URL)
 
-	// 验证 CNB 使用的是 v1.0.0 tag
-	if cfg.Config.UseMirror && info.Tag != types.CNB_DICT_TAG {
-		t.Errorf("CNB 词库 tag 错误，期望 %s，实际 %s", types.CNB_DICT_TAG, info.Tag)
+	if cfg.Config.UseMirror && info.Tag == "" {
+		t.Error("CNB 词库 tag 为空")
 	}
 }
 

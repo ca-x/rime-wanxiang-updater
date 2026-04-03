@@ -89,6 +89,9 @@ type Model struct {
 	Width  int
 	Height int
 
+	// 动画状态
+	AnimationFrame int
+
 	// Exclude file management UI state
 	ExcludeListChoice   int
 	ExcludeEditInput    string
@@ -130,3 +133,6 @@ type AutoUpdateDetails struct {
 
 // CountdownTickMsg 倒计时消息
 type CountdownTickMsg struct{}
+
+// AnimationTickMsg 动画刷新消息
+type AnimationTickMsg struct{}

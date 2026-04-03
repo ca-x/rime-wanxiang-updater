@@ -8,6 +8,7 @@ import (
 
 	"rime-wanxiang-updater/internal/config"
 	"rime-wanxiang-updater/internal/fileutil"
+	"rime-wanxiang-updater/internal/releaseutil"
 	"rime-wanxiang-updater/internal/types"
 )
 
@@ -95,8 +96,7 @@ func (d *DictUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 	var err error
 
 	if d.Config.Config.UseMirror {
-		// CNB 使用 v1.0.0 tag
-		releases, err = d.APIClient.FetchCNBReleases(types.OWNER, types.CNB_REPO, types.CNB_DICT_TAG)
+		releases, err = d.APIClient.FetchCNBReleases(types.OWNER, types.CNB_REPO, "")
 	} else {
 		// GitHub 使用 dict-nightly tag
 		releases, err = d.APIClient.FetchGitHubReleases(types.OWNER, types.REPO, types.DICT_TAG)
@@ -110,23 +110,56 @@ func (d *DictUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 		return nil, fmt.Errorf("未找到任何发布版本")
 	}
 
+	if d.Config.Config.UseMirror {
+		info, ok := findDictRelease(releases, d.Config.Config.SchemeFile, d.Config.Config.DictFile)
+		if ok {
+			return info, nil
+		}
+
+		return nil, fmt.Errorf("未找到匹配的词库文件: %s", d.Config.Config.DictFile)
+	}
+
 	for _, release := range releases {
 		for _, asset := range release.Assets {
-			if asset.Name == d.Config.Config.DictFile {
-				return &types.UpdateInfo{
-					Name:       asset.Name,
-					URL:        asset.BrowserDownloadURL,
-					UpdateTime: asset.UpdatedAt,
-					Tag:        release.TagName,
-					SHA256:     asset.SHA256,
-					ID:         asset.ID,
-					Size:       asset.Size,
-				}, nil
+			if asset.Name != d.Config.Config.DictFile {
+				continue
 			}
+
+			return &types.UpdateInfo{
+				Name:       asset.Name,
+				URL:        asset.BrowserDownloadURL,
+				UpdateTime: asset.UpdatedAt,
+				Tag:        release.TagName,
+				SHA256:     asset.SHA256,
+				ID:         asset.ID,
+				Size:       asset.Size,
+			}, nil
 		}
 	}
 
 	return nil, fmt.Errorf("未找到匹配的词库文件: %s", d.Config.Config.DictFile)
+}
+
+func findDictRelease(
+	releases []types.GitHubRelease,
+	schemeFile string,
+	dictFile string,
+) (*types.UpdateInfo, bool) {
+	matchDict := func(name string) bool {
+		return name == dictFile
+	}
+
+	schemeInfo, ok := releaseutil.FindPreferredAssetInfo(releases, func(name string) bool {
+		return name == schemeFile
+	}, types.CNB_DICT_TAG)
+	if ok {
+		info, found := releaseutil.FindAssetInfoByTag(releases, matchDict, schemeInfo.Tag)
+		if found {
+			return info, true
+		}
+	}
+
+	return releaseutil.FindAssetInfoByTag(releases, matchDict, types.CNB_DICT_TAG)
 }
 
 // Run 执行更新

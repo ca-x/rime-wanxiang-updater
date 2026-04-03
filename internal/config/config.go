@@ -15,6 +15,7 @@ import (
 
 	"rime-wanxiang-updater/internal/api"
 	"rime-wanxiang-updater/internal/i18n"
+	"rime-wanxiang-updater/internal/releaseutil"
 	"rime-wanxiang-updater/internal/types"
 )
 
@@ -427,24 +428,32 @@ func (m *Manager) GetActualFilenames(schemeKey string) (string, string, error) {
 	}
 
 	var schemeFile, dictFile string
+	var preferredSchemeTag string
 
-	// 查找方案文件
-	for _, release := range releases {
-		for _, asset := range release.Assets {
-			if schemeRegex.MatchString(asset.Name) {
-				schemeFile = asset.Name
+	if m.Config.UseMirror {
+		schemeInfo, ok := releaseutil.FindPreferredAssetInfo(releases, schemeRegex.MatchString, types.CNB_DICT_TAG)
+		if ok {
+			schemeFile = schemeInfo.Name
+			preferredSchemeTag = schemeInfo.Tag
+		}
+	} else {
+		// 查找方案文件
+		for _, release := range releases {
+			for _, asset := range release.Assets {
+				if schemeRegex.MatchString(asset.Name) {
+					schemeFile = asset.Name
+					break
+				}
+			}
+			if schemeFile != "" {
 				break
 			}
-		}
-		if schemeFile != "" {
-			break
 		}
 	}
 
 	// 获取词库文件
 	if m.Config.UseMirror {
-		// CNB 使用 v1.0.0 tag
-		releases, err = client.FetchCNBReleases(types.OWNER, types.CNB_REPO, types.CNB_DICT_TAG)
+		releases, err = client.FetchCNBReleases(types.OWNER, types.CNB_REPO, "")
 	} else {
 		// GitHub 使用 dict-nightly tag
 		releases, err = client.FetchGitHubReleases(types.OWNER, types.REPO, types.DICT_TAG)
@@ -454,16 +463,31 @@ func (m *Manager) GetActualFilenames(schemeKey string) (string, string, error) {
 		return "", "", fmt.Errorf("获取词库信息失败: %w", err)
 	}
 
-	// 查找词库文件
-	for _, release := range releases {
-		for _, asset := range release.Assets {
-			if dictRegex.MatchString(asset.Name) {
-				dictFile = asset.Name
-				break
+	if m.Config.UseMirror {
+		if preferredSchemeTag != "" {
+			selected, ok := releaseutil.FindAssetInfoByTag(releases, dictRegex.MatchString, preferredSchemeTag)
+			if ok {
+				dictFile = selected.Name
 			}
 		}
-		if dictFile != "" {
-			break
+		if dictFile == "" {
+			selected, ok := releaseutil.FindAssetInfoByTag(releases, dictRegex.MatchString, types.CNB_DICT_TAG)
+			if ok {
+				dictFile = selected.Name
+			}
+		}
+	} else {
+		// 查找词库文件
+		for _, release := range releases {
+			for _, asset := range release.Assets {
+				if dictRegex.MatchString(asset.Name) {
+					dictFile = asset.Name
+					break
+				}
+			}
+			if dictFile != "" {
+				break
+			}
 		}
 	}
 

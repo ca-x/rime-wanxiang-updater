@@ -15,16 +15,19 @@ import (
 // Styles 主题化样式集合
 type Styles struct {
 	// 颜色
-	Primary    lipgloss.Color
-	Secondary  lipgloss.Color
-	Accent     lipgloss.Color
-	Surface    lipgloss.Color
-	Success    lipgloss.Color
-	Warning    lipgloss.Color
-	Error      lipgloss.Color
-	Muted      lipgloss.Color
-	Background lipgloss.Color
-	Foreground lipgloss.Color
+	Primary     lipgloss.Color
+	PrimarySoft lipgloss.Color
+	Secondary   lipgloss.Color
+	Accent      lipgloss.Color
+	Surface     lipgloss.Color
+	SurfaceAlt  lipgloss.Color
+	Success     lipgloss.Color
+	Warning     lipgloss.Color
+	Error       lipgloss.Color
+	Muted       lipgloss.Color
+	Border      lipgloss.Color
+	Background  lipgloss.Color
+	Foreground  lipgloss.Color
 
 	// 样式
 	Logo               lipgloss.Style
@@ -71,14 +74,17 @@ func NewStyles(t *base16.Theme) *Styles {
 	}
 
 	// 映射颜色
-	s.Primary = t.Cyan
-	s.Secondary = t.Magenta
-	s.Accent = t.Blue
+	s.Primary = blendColors(t.Blue, t.Cyan, 0.45)
+	s.PrimarySoft = blendColors(s.Primary, background, 0.7)
+	s.Secondary = blendColors(t.Magenta, t.Blue, 0.25)
+	s.Accent = blendColors(t.Cyan, t.Blue, 0.18)
 	s.Surface = surface
+	s.SurfaceAlt = blendColors(surface, background, 0.18)
 	s.Success = t.Green
 	s.Warning = t.Yellow
 	s.Error = t.Red
 	s.Muted = muted
+	s.Border = blendColors(s.Primary, background, 0.55)
 	s.Background = background
 	s.Foreground = foreground
 
@@ -93,28 +99,26 @@ func NewStyles(t *base16.Theme) *Styles {
 		Bold(true).
 		Padding(0, 2).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(s.Secondary).
+		BorderForeground(s.Border).
 		Align(lipgloss.Center)
 
 	// 菜单项样式
 	s.MenuItem = lipgloss.NewStyle().
-		Foreground(s.Primary).
+		Foreground(s.Foreground).
 		Padding(0, 1)
 
 	// 选中菜单项样式
 	s.SelectedMenuItem = lipgloss.NewStyle().
 		Foreground(s.Foreground).
-		Background(s.Surface).
 		Padding(0, 1).
 		Bold(true).
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(s.Primary)
+		BorderForeground(s.Accent)
 
 	// 信息框样式
 	s.InfoBox = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(s.Secondary).
-		Background(s.Surface).
+		BorderForeground(s.Border).
 		Padding(1, 2).
 		MarginTop(0).
 		MarginBottom(0)
@@ -146,7 +150,7 @@ func NewStyles(t *base16.Theme) *Styles {
 		Bold(true).
 		Padding(0, 1).
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(t.Orange)
+		BorderForeground(blendColors(t.Orange, background, 0.35))
 
 	// 提示样式
 	s.Hint = lipgloss.NewStyle().
@@ -165,7 +169,7 @@ func NewStyles(t *base16.Theme) *Styles {
 
 	// 进度消息样式
 	s.ProgressMsg = lipgloss.NewStyle().
-		Foreground(s.Success).
+		Foreground(s.Accent).
 		Bold(true).
 		Padding(1, 2)
 
@@ -177,12 +181,12 @@ func NewStyles(t *base16.Theme) *Styles {
 
 	// 扫描线样式
 	s.ScanLine = lipgloss.NewStyle().
-		Foreground(s.Primary).
+		Foreground(s.Muted).
 		Faint(true)
 
 	// 网格样式
 	s.Grid = lipgloss.NewStyle().
-		Foreground(t.Comment)
+		Foreground(s.Muted)
 
 	// 闪烁效果样式
 	s.Blink = lipgloss.NewStyle().
@@ -212,7 +216,7 @@ func NewStyles(t *base16.Theme) *Styles {
 		Foreground(s.Muted)
 
 	s.StatusKey = lipgloss.NewStyle().
-		Foreground(s.Muted).
+		Foreground(s.Primary).
 		Bold(true)
 
 	s.StatusValue = lipgloss.NewStyle().
@@ -221,8 +225,7 @@ func NewStyles(t *base16.Theme) *Styles {
 	// 对话框样式
 	s.DialogBox = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(s.Secondary).
-		Background(s.Surface).
+		BorderForeground(s.Border).
 		Padding(1, 2).
 		BorderTop(true).
 		BorderLeft(true).
@@ -231,25 +234,24 @@ func NewStyles(t *base16.Theme) *Styles {
 
 	s.DialogButton = lipgloss.NewStyle().
 		Foreground(s.Foreground).
-		Background(s.Surface).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(t.Comment).
+		BorderForeground(s.Border).
 		Padding(0, 2).
 		MarginTop(1).
 		MarginRight(1)
 
 	s.DialogActiveButton = lipgloss.NewStyle().
 		Foreground(s.Background).
-		Background(s.Secondary).
+		Background(s.Accent).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(s.Secondary).
+		BorderForeground(s.Accent).
 		Padding(0, 2).
 		MarginTop(1).
 		MarginRight(1).
 		Bold(true)
 
 	s.DialogCheckbox = lipgloss.NewStyle().
-		Foreground(s.Primary).
+		Foreground(s.Muted).
 		MarginTop(1)
 
 	return s

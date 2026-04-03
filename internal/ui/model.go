@@ -65,7 +65,7 @@ func NewModel(
 // Init 初始化
 func (m Model) Init() tea.Cmd {
 	// 启动事件监听和倒计时（如果需要）
-	cmds := []tea.Cmd{listenForEvents(m.EventChan)}
+	cmds := []tea.Cmd{listenForEvents(m.EventChan), uiAnimationTick()}
 
 	if m.State == ViewMenu && m.Cfg.Config.AutoUpdate {
 		cmds = append(cmds, countdownTick())
@@ -132,6 +132,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, countdownTick()
 		}
 		return m, nil
+
+	case AnimationTickMsg:
+		m.AnimationFrame = (m.AnimationFrame + 1) % 48
+		return m, uiAnimationTick()
 	}
 
 	return m, nil
@@ -311,5 +315,11 @@ func listenForEvents(eventChan <-chan controller.Event) tea.Cmd {
 func countdownTick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return CountdownTickMsg{}
+	})
+}
+
+func uiAnimationTick() tea.Cmd {
+	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg {
+		return AnimationTickMsg{}
 	})
 }

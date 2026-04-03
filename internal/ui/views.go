@@ -34,29 +34,111 @@ func (m Model) pageWidth() int {
 	return m.contentWidth(64)
 }
 
+func (m Model) summaryWidth() int {
+	width := m.pageWidth() - 6
+	if width < 42 {
+		width = 42
+	}
+	if width > 56 {
+		width = 56
+	}
+
+	return width
+}
+
+func (m Model) menuWidth() int {
+	width := m.pageWidth() - 4
+	if width < 44 {
+		width = 44
+	}
+	if width > 58 {
+		width = 58
+	}
+
+	return width
+}
+
 func (m Model) renderPanel(content string, border lipgloss.Color) string {
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(border).
-		Background(m.Styles.Surface).
 		Padding(1, 2).
 		Width(m.pageWidth()).
 		Render(content)
 }
 
 func (m Model) renderScreen(content string) string {
-	screenWidth := m.pageWidth() + 6
-	if m.Width > screenWidth {
-		screenWidth = m.Width
+	block := content
+	if m.Width > 0 {
+		block = centerBlock(content, m.Width)
 	}
 
-	return m.Styles.Container.
-		Width(screenWidth).
-		Render(content)
+	if m.Height > 0 {
+		contentHeight := lipgloss.Height(block)
+		if contentHeight < m.Height {
+			topPadding := (m.Height - contentHeight) / 2
+			if topPadding > 0 {
+				block = strings.Repeat("\n", topPadding) + block
+			}
+		}
+	}
+
+	return block
+}
+
+func centerBlock(content string, width int) string {
+	if width <= 0 {
+		return content
+	}
+
+	blockWidth := lipgloss.Width(content)
+	if blockWidth <= 0 || blockWidth >= width {
+		return content
+	}
+
+	return lipgloss.PlaceHorizontal(width, lipgloss.Center, content)
 }
 
 func (m Model) renderLabeledChips(items [][2]string) string {
 	return m.renderLabeledChipsWithWidth(m.pageWidth(), items)
+}
+
+func (m Model) renderSummaryCard(items [][2]string) string {
+	if len(items) == 0 {
+		return ""
+	}
+
+	cardWidth := m.summaryWidth()
+	labelWidth := 0
+	for _, item := range items {
+		if width := lipgloss.Width(item[0]); width > labelWidth {
+			labelWidth = width
+		}
+	}
+
+	labelStyle := lipgloss.NewStyle().
+		Foreground(m.Styles.StatusKey.GetForeground()).
+		Bold(true).
+		Width(labelWidth)
+	valueStyle := lipgloss.NewStyle().
+		Foreground(m.Styles.Foreground)
+
+	lines := make([]string, 0, len(items))
+	for _, item := range items {
+		lines = append(lines, labelStyle.Render(item[0])+"  "+valueStyle.Render(item[1]))
+	}
+
+	card := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.Styles.Border).
+		Padding(0, 2).
+		Width(cardWidth).
+		Render(strings.Join(lines, "\n"))
+
+	return lipgloss.NewStyle().
+		Width(m.pageWidth()).
+		Align(lipgloss.Center).
+		Render(card)
 }
 
 func (m Model) renderLabeledChipsWithWidth(totalWidth int, items [][2]string) string {
@@ -81,8 +163,7 @@ func (m Model) renderLabeledChipsWithWidth(totalWidth int, items [][2]string) st
 
 		chip := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(m.Styles.Muted).
-			Background(m.Styles.Surface).
+			BorderForeground(m.Styles.Border).
 			Padding(0, 1).
 			Width(chipWidth).
 			Height(2).
@@ -104,6 +185,153 @@ func (m Model) renderLabeledChipsWithWidth(totalWidth int, items [][2]string) st
 		Render(lipgloss.JoinHorizontal(lipgloss.Top, row...))
 }
 
+func (m Model) renderMetaBadge(text string) string {
+	return lipgloss.NewStyle().
+		Foreground(m.Styles.Foreground).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.Styles.Border).
+		Padding(0, 1).
+		Render(text)
+}
+
+func (m Model) renderInlineVersion(text string) string {
+	return lipgloss.NewStyle().
+		Foreground(m.Styles.Accent).
+		Bold(true).
+		Render(text)
+}
+
+func (m Model) animatedRule(width int) string {
+	if width < 16 {
+		width = 16
+	}
+
+	cursor := m.AnimationFrame % width
+	left := strings.Repeat("─", cursor)
+	rightWidth := width - cursor - 1
+	if rightWidth < 0 {
+		rightWidth = 0
+	}
+
+	glyphs := []string{"◦", "•", "◦", "•"}
+	focus := lipgloss.NewStyle().
+		Foreground(m.Styles.Accent).
+		Bold(true).
+		Render(glyphs[m.AnimationFrame%len(glyphs)])
+
+	muted := lipgloss.NewStyle().Foreground(m.Styles.Muted)
+	return muted.Render(left) + focus + muted.Render(strings.Repeat("─", rightWidth))
+}
+
+func (m Model) renderTitle(text string) string {
+	leftRule := lipgloss.NewStyle().Foreground(m.Styles.Muted).Render("──")
+	rightRule := lipgloss.NewStyle().Foreground(m.Styles.Muted).Render("──")
+	pulseGlyphs := []string{"◦", "•", "◦", "•"}
+	pulse := lipgloss.NewStyle().
+		Foreground(m.Styles.Accent).
+		Bold(true).
+		Render(pulseGlyphs[m.AnimationFrame%len(pulseGlyphs)])
+	title := lipgloss.NewStyle().
+		Foreground(m.Styles.Primary).
+		Bold(true).
+		Render(text)
+
+	line := lipgloss.JoinHorizontal(lipgloss.Center, leftRule, " ", pulse, " ", title, " ", pulse, " ", rightRule)
+	return lipgloss.NewStyle().Width(m.pageWidth()).Align(lipgloss.Center).Render(line)
+}
+
+func (m Model) renderHintStrip(items ...string) string {
+	if len(items) == 0 {
+		return ""
+	}
+
+	chips := make([]string, 0, len(items))
+	for _, item := range items {
+		chips = append(chips, lipgloss.NewStyle().
+			Foreground(m.Styles.Muted).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(m.Styles.Border).
+			Padding(0, 1).
+			Render(item))
+	}
+
+	row := make([]string, 0, len(chips)*2-1)
+	for i, chip := range chips {
+		if i > 0 {
+			row = append(row, " ")
+		}
+		row = append(row, chip)
+	}
+
+	return lipgloss.NewStyle().
+		Width(m.pageWidth()).
+		Align(lipgloss.Center).
+		Render(lipgloss.JoinHorizontal(lipgloss.Center, row...))
+}
+
+func (m Model) renderStatusBadge(text string, color lipgloss.Color) string {
+	return lipgloss.NewStyle().
+		Foreground(m.Styles.Background).
+		Background(color).
+		Padding(0, 1).
+		Bold(true).
+		Render(text)
+}
+
+func (m Model) renderMenuEntry(index int, icon, title, desc string, selected bool) string {
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.Styles.Primary).
+		Bold(true)
+	descStyle := lipgloss.NewStyle().
+		Foreground(m.Styles.Muted)
+	entryWidth := m.menuWidth()
+	if selected {
+		entryWidth -= 2
+	}
+	if entryWidth < 24 {
+		entryWidth = 24
+	}
+	baseStyle := lipgloss.NewStyle().
+		Width(entryWidth).
+		Padding(0, 2)
+
+	titleLine := fmt.Sprintf("[%d] %s %s", index, icon, title)
+	content := titleStyle.Render(titleLine) + "\n" +
+		lipgloss.NewStyle().PaddingLeft(3).Render(descStyle.Render(desc))
+
+	if !selected {
+		return baseStyle.Render(content)
+	}
+
+	cursor := []string{"▌", "▋"}[m.AnimationFrame%2]
+	selectedContent := lipgloss.NewStyle().
+		Foreground(m.Styles.Accent).
+		Bold(true).
+		Render(cursor+" "+titleLine) + "\n" +
+		lipgloss.NewStyle().PaddingLeft(3).Render(descStyle.Render(desc))
+
+	return baseStyle.
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.Styles.Accent).
+		Render(selectedContent)
+}
+
+func (m Model) renderMenuList(items []struct {
+	icon string
+	text string
+	desc string
+}) string {
+	rows := make([]string, 0, len(items))
+	for i, item := range items {
+		entry := m.renderMenuEntry(i+1, item.icon, item.text, item.desc, i == m.MenuChoice)
+		rows = append(rows, lipgloss.NewStyle().Width(m.pageWidth()).Align(lipgloss.Center).Render(entry))
+	}
+
+	return lipgloss.NewStyle().
+		Width(m.pageWidth()).
+		Render(strings.Join(rows, "\n"))
+}
+
 func (m Model) renderHeaderBlock() string {
 	var b strings.Builder
 
@@ -111,15 +339,17 @@ func (m Model) renderHeaderBlock() string {
 		Foreground(m.Styles.Primary).
 		Bold(true).
 		Render("Rime Wanxiang Updater")
-
-	build := lipgloss.NewStyle().
+	versionText := m.renderInlineVersion(version.GetVersion())
+	separator := lipgloss.NewStyle().
 		Foreground(m.Styles.Muted).
-		Render(version.GetVersion())
-
-	line := lipgloss.JoinHorizontal(lipgloss.Center, brand, "  ", build)
+		Render("·")
+	line := lipgloss.JoinHorizontal(lipgloss.Center, brand, " ", separator, " ", versionText)
+	if lipgloss.Width(line) > m.pageWidth() {
+		line = lipgloss.JoinVertical(lipgloss.Center, brand, versionText)
+	}
 	b.WriteString(lipgloss.NewStyle().Width(m.pageWidth()).Align(lipgloss.Center).Render(line))
 	b.WriteString("\n")
-	b.WriteString(m.Styles.ScanLine.Render(scanLine))
+	b.WriteString(lipgloss.NewStyle().Width(m.pageWidth()).Align(lipgloss.Center).Render(m.animatedRule(m.pageWidth() - 8)))
 	b.WriteString("\n\n")
 
 	return b.String()
@@ -222,8 +452,7 @@ func (m Model) renderWizard() string {
 
 	switch m.WizardStep {
 	case WizardSchemeType:
-		wizardTitle := RenderGradientTitle("⚡ " + m.t("wizard.title") + " ⚡")
-		b.WriteString(wizardTitle + "\n\n")
+		b.WriteString(m.renderTitle("⚡ "+m.t("wizard.title")+" ⚡") + "\n\n")
 
 		question := m.Styles.InfoBox.Render("▸ " + m.t("wizard.scheme_type"))
 		b.WriteString(question + "\n\n")
@@ -236,8 +465,7 @@ func (m Model) renderWizard() string {
 		b.WriteString(hint)
 
 	case WizardSchemeVariant:
-		wizardTitle := RenderGradientTitle("⚡ " + m.t("wizard.title") + " ⚡")
-		b.WriteString(wizardTitle + "\n\n")
+		b.WriteString(m.renderTitle("⚡ "+m.t("wizard.title")+" ⚡") + "\n\n")
 
 		question := m.Styles.InfoBox.Render("▸ " + m.t("wizard.variant"))
 		b.WriteString(question + "\n\n")
@@ -251,8 +479,7 @@ func (m Model) renderWizard() string {
 		b.WriteString(hint)
 
 	case WizardDownloadSource:
-		wizardTitle := RenderGradientTitle("⚡ " + m.t("wizard.title") + " ⚡")
-		b.WriteString(wizardTitle + "\n\n")
+		b.WriteString(m.renderTitle("⚡ "+m.t("wizard.title")+" ⚡") + "\n\n")
 
 		question := m.Styles.InfoBox.Render("▸ " + m.t("wizard.download_source"))
 		b.WriteString(question + "\n\n")
@@ -284,20 +511,14 @@ func (m Model) renderMenu() string {
 		b.WriteString(warningBox.Render(m.RimeInstallStatus.Message) + "\n\n")
 	}
 
-	menuTitle := RenderGradientTitle("⚡ " + m.t("menu.title") + " ⚡")
-	b.WriteString(menuTitle + "\n\n")
+	b.WriteString(m.renderTitle("⚡ "+m.t("menu.title")+" ⚡") + "\n\n")
 
-	statusContent := strings.Join([]string{
-		m.renderLabeledChips([][2]string{
-			{m.t("menu.summary.scheme"), m.schemeLabel(m.Cfg.GetSchemeDisplayName())},
-			{m.t("menu.summary.engine"), m.Cfg.GetEngineDisplayName()},
-			{m.t("menu.summary.source"), m.configuredSourceLabel()},
-		}),
-		m.renderLabeledChips([][2]string{
-			{m.t("menu.summary.theme"), m.ThemeManager.CurrentName()},
-			{m.t("menu.summary.auto_update"), m.autoUpdateStatusLabel()},
-		}),
-	}, "\n")
+	statusContent := m.renderSummaryCard([][2]string{
+		{m.t("menu.summary.scheme"), m.schemeLabel(m.Cfg.GetSchemeDisplayName())},
+		{m.t("menu.summary.engine"), m.Cfg.GetEngineDisplayName()},
+		{m.t("menu.summary.source"), m.configuredSourceLabel()},
+		{m.t("menu.summary.auto_update"), m.autoUpdateStatusLabel()},
+	})
 	b.WriteString(statusContent + "\n\n")
 
 	menuItems := []struct {
@@ -347,28 +568,7 @@ func (m Model) renderMenu() string {
 		},
 	}
 
-	titleStyle := lipgloss.NewStyle().
-		Foreground(m.Styles.Primary).
-		Bold(true)
-	descStyle := lipgloss.NewStyle().
-		Foreground(m.Styles.Muted)
-	selectedStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.Styles.Primary).
-		Background(m.Styles.Surface).
-		Padding(0, 1).
-		Width(m.pageWidth())
-
-	for i, item := range menuItems {
-		if i == m.MenuChoice {
-			entry := titleStyle.Render(fmt.Sprintf("► [%d] %s %s", i+1, item.icon, item.text)) +
-				"\n" + descStyle.Render(item.desc)
-			b.WriteString(selectedStyle.Render(entry) + "\n\n")
-			continue
-		}
-
-		b.WriteString(titleStyle.Render(fmt.Sprintf("  [%d] %s %s", i+1, item.icon, item.text)) + "\n")
-	}
+	b.WriteString(m.renderMenuList(menuItems) + "\n")
 
 	b.WriteString("\n" + m.Styles.Grid.Render(gridLine) + "\n")
 
@@ -384,22 +584,15 @@ func (m Model) renderMenu() string {
 		b.WriteString(cancelledStyle.Render("✓ "+m.t("menu.auto_update.cancelled")) + "\n\n")
 	}
 
-	hint := m.Styles.Hint.Render(m.t("menu.hint"))
-	b.WriteString(hint + "\n\n")
-
-	statusBar := RenderStatusBarThemed(
-		m.Styles,
-		m.pageWidth(),
-		m.t("menu.summary.version"),
-		m.t("menu.summary.engine"),
-		m.t("menu.summary.source"),
-		m.t("menu.summary.scheme"),
-		version.GetVersion(),
-		m.Cfg.GetEngineDisplayName(),
-		m.configuredSourceLabel(),
-		m.schemeLabel(m.Cfg.GetSchemeDisplayName()),
+	b.WriteString(
+		m.renderHintStrip(
+			m.t("ui.hint.shortcuts"),
+			m.t("ui.hint.nav"),
+			m.t("ui.hint.select"),
+			m.t("ui.hint.quit"),
+		),
 	)
-	b.WriteString(statusBar)
+	b.WriteString("\n\n")
 
 	return m.renderScreen(b.String())
 }
@@ -410,8 +603,7 @@ func (m Model) renderUpdating() string {
 
 	b.WriteString(m.renderHeaderBlock())
 
-	title := RenderGradientTitle("⚡ " + m.t("updating.title") + " ⚡")
-	b.WriteString(title + "\n\n")
+	b.WriteString(m.renderTitle("⚡ "+m.t("updating.title")+" ⚡") + "\n\n")
 
 	component := m.CurrentComponent
 	if component == "" {
@@ -420,12 +612,8 @@ func (m Model) renderUpdating() string {
 		component = m.componentLabel(component)
 	}
 
-	statusChip := lipgloss.NewStyle().
-		Foreground(m.Styles.Background).
-		Background(m.Styles.Accent).
-		Padding(0, 1).
-		Bold(true).
-		Render(m.t("updating.stage", component))
+	stageIcon := []string{"◦", "•", "◦", "•"}[m.AnimationFrame%4]
+	statusChip := m.renderStatusBadge(stageIcon+" "+m.t("updating.stage", component), m.Styles.Accent)
 	b.WriteString(statusChip + "\n\n")
 
 	panelWidth := m.updatingPanelWidth()
@@ -487,7 +675,8 @@ func (m Model) renderUpdating() string {
 	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n\n")
 
 	hint := m.Styles.Hint.Render(m.t("updating.hint"))
-	b.WriteString(hint)
+	b.WriteString(hint + "\n\n")
+	b.WriteString(m.renderHintStrip(m.t("ui.hint.exit"), m.t("ui.hint.live_progress")))
 
 	return m.renderScreen(b.String())
 }
@@ -498,8 +687,7 @@ func (m Model) renderConfig() string {
 
 	b.WriteString(m.renderHeaderBlock())
 
-	title := RenderGradientTitle("⚡ " + m.t("config.title") + " ⚡")
-	b.WriteString(title + "\n\n")
+	b.WriteString(m.renderTitle("⚡ "+m.t("config.title")+" ⚡") + "\n\n")
 
 	editableConfigs := []struct {
 		key      string
@@ -752,8 +940,8 @@ func (m Model) renderConfig() string {
 	var configContent strings.Builder
 	selectedRowStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.Styles.Primary).
-		Background(m.Styles.Surface).
+		BorderForeground(m.Styles.Accent).
+		Background(m.Styles.SurfaceAlt).
 		Padding(0, 1)
 
 	for _, cfg := range editableConfigs {
@@ -774,8 +962,8 @@ func (m Model) renderConfig() string {
 
 	pathBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.Styles.Secondary).
-		Background(m.Styles.Surface).
+		BorderForeground(m.Styles.Border).
+		Background(m.Styles.SurfaceAlt).
 		Padding(0, 1).
 		Foreground(m.Styles.Secondary)
 
@@ -788,7 +976,8 @@ func (m Model) renderConfig() string {
 	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n")
 
 	hint2 := m.Styles.Hint.Render(m.t("config.hint"))
-	b.WriteString(hint2)
+	b.WriteString(hint2 + "\n\n")
+	b.WriteString(m.renderHintStrip(m.t("ui.hint.nav"), m.t("ui.hint.edit"), m.t("ui.hint.back")))
 
 	return m.renderScreen(b.String())
 }
@@ -799,8 +988,7 @@ func (m Model) renderConfigEdit() string {
 
 	b.WriteString(m.renderHeaderBlock())
 
-	title := RenderGradientTitle("⚡ " + m.t("config.edit.title") + " ⚡")
-	b.WriteString(title + "\n\n")
+	b.WriteString(m.renderTitle("⚡ "+m.t("config.edit.title")+" ⚡") + "\n\n")
 
 	var configName string
 	var inputHint string
@@ -852,8 +1040,8 @@ func (m Model) renderConfigEdit() string {
 
 	editBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.Styles.Secondary).
-		Background(m.Styles.Surface).
+		BorderForeground(m.Styles.Border).
+		Background(m.Styles.SurfaceAlt).
 		Padding(1, 2).
 		Width(m.contentWidth(56))
 
@@ -911,7 +1099,8 @@ func (m Model) renderConfigEdit() string {
 	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n\n")
 
 	hint := m.Styles.Hint.Render(m.t("config.edit.hint.save"))
-	b.WriteString(hint)
+	b.WriteString(hint + "\n\n")
+	b.WriteString(m.renderHintStrip(m.t("ui.hint.save"), m.t("ui.hint.back"), m.t("ui.hint.switch_option")))
 
 	return m.renderScreen(b.String())
 }
@@ -922,8 +1111,7 @@ func (m Model) renderResult() string {
 
 	b.WriteString(m.renderHeaderBlock())
 
-	title := RenderGradientTitle("⚡ " + m.t("result.title") + " ⚡")
-	b.WriteString(title + "\n\n")
+	b.WriteString(m.renderTitle("⚡ "+m.t("result.title")+" ⚡") + "\n\n")
 
 	borderColor := m.Styles.Error
 	headlineStyle := lipgloss.NewStyle().
@@ -1011,8 +1199,7 @@ func (m Model) renderFcitxConflict() string {
 
 	b.WriteString(m.renderHeaderBlock())
 
-	title := RenderGradientTitle("⚠ " + m.t("fcitx.title") + " ⚠")
-	b.WriteString(title + "\n\n")
+	b.WriteString(m.renderTitle("⚠ "+m.t("fcitx.title")+" ⚠") + "\n\n")
 
 	homeDir, _ := os.UserHomeDir()
 	targetDir := filepath.Join(homeDir, ".config", "fcitx", "rime")
@@ -1090,8 +1277,7 @@ func (m Model) renderEngineSelector() string {
 
 	b.WriteString(m.renderHeaderBlock())
 
-	title := RenderGradientTitle("⚙ " + m.t("engine.title") + " ⚙")
-	b.WriteString(title + "\n\n")
+	b.WriteString(m.renderTitle("⚙ "+m.t("engine.title")+" ⚙") + "\n\n")
 
 	info := m.Styles.InfoBox.Render(m.t("engine.help"))
 	b.WriteString(info + "\n\n")
@@ -1130,8 +1316,7 @@ func (m Model) renderEnginePrompt() string {
 
 	b.WriteString(m.renderHeaderBlock())
 
-	title := RenderGradientTitle("⚡ " + m.t("engine.prompt.title") + " ⚡")
-	b.WriteString(title + "\n\n")
+	b.WriteString(m.renderTitle("⚡ "+m.t("engine.prompt.title")+" ⚡") + "\n\n")
 
 	separator := "、"
 	if string(m.locale()) == "en" {

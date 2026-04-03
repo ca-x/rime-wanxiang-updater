@@ -161,8 +161,7 @@ func (m Model) renderExcludeList() string {
 
 	b.WriteString(m.renderHeaderBlock())
 
-	title := RenderGradientTitle("📋 " + m.t("exclude.title") + " 📋")
-	b.WriteString(title + "\n\n")
+	b.WriteString(m.renderTitle("📋 "+m.t("exclude.title")+" 📋") + "\n\n")
 
 	helpText := lipgloss.NewStyle().
 		Foreground(m.Styles.Muted).
@@ -229,7 +228,8 @@ func (m Model) renderExcludeList() string {
 	}
 
 	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n\n")
-	b.WriteString(m.Styles.Hint.Render(m.t("exclude.hint")) + "\n")
+	b.WriteString(m.Styles.Hint.Render(m.t("exclude.hint")) + "\n\n")
+	b.WriteString(m.renderHintStrip(m.t("ui.hint.nav"), m.t("ui.hint.edit"), m.t("ui.hint.delete"), m.t("ui.hint.back")) + "\n")
 
 	return m.renderScreen(b.String())
 }
@@ -240,8 +240,7 @@ func (m Model) renderExcludeEdit() string {
 
 	b.WriteString(m.renderHeaderBlock())
 
-	title := RenderGradientTitle("✏️ " + m.t("exclude.edit.title") + " ✏️")
-	b.WriteString(title + "\n\n")
+	b.WriteString(m.renderTitle("✏️ "+m.t("exclude.edit.title")+" ✏️") + "\n\n")
 
 	labelStyle := m.Styles.ConfigKey
 	b.WriteString(labelStyle.Render(m.t("exclude.original")) + m.Cfg.Config.ExcludeFiles[m.ExcludeEditIndex] + "\n\n")
@@ -262,7 +261,8 @@ func (m Model) renderExcludeEdit() string {
 	}
 
 	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n\n")
-	b.WriteString(m.Styles.Hint.Render(m.t("exclude.edit.hint")) + "\n")
+	b.WriteString(m.Styles.Hint.Render(m.t("exclude.edit.hint")) + "\n\n")
+	b.WriteString(m.renderHintStrip(m.t("ui.hint.save"), m.t("ui.hint.back")) + "\n")
 
 	return m.renderScreen(b.String())
 }
@@ -273,8 +273,7 @@ func (m Model) renderExcludeAdd() string {
 
 	b.WriteString(m.renderHeaderBlock())
 
-	title := RenderGradientTitle("➕ " + m.t("exclude.add.title") + " ➕")
-	b.WriteString(title + "\n\n")
+	b.WriteString(m.renderTitle("➕ "+m.t("exclude.add.title")+" ➕") + "\n\n")
 
 	labelStyle := m.Styles.ConfigKey
 	b.WriteString(labelStyle.Render(m.t("exclude.new")))
@@ -296,7 +295,8 @@ func (m Model) renderExcludeAdd() string {
 	}
 
 	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n\n")
-	b.WriteString(m.Styles.Hint.Render(m.t("exclude.add.hint")) + "\n")
+	b.WriteString(m.Styles.Hint.Render(m.t("exclude.add.hint")) + "\n\n")
+	b.WriteString(m.renderHintStrip(m.t("ui.hint.add"), m.t("ui.hint.back")) + "\n")
 
 	return m.renderScreen(b.String())
 }
