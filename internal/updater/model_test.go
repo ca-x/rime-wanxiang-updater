@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +52,9 @@ func TestModelUpdaterCheckUpdate(t *testing.T) {
 			if tt.wantErr && err == nil {
 				t.Errorf("期望出错，但成功了")
 			}
+			if tt.useMirror && err != nil && strings.Contains(err.Error(), "状态码: 429") {
+				t.Skipf("CNB rate limited this live test: %v", err)
+			}
 			if !tt.wantErr && err != nil {
 				t.Errorf("不期望出错，但失败了: %v", err)
 			}
@@ -78,9 +82,17 @@ func TestModelUpdaterCheckUpdate(t *testing.T) {
 				}
 
 				if tt.useMirror {
-					expectedTime := time.Date(2026, 1, 6, 0, 0, 0, 0, time.UTC)
-					if !info.UpdateTime.Equal(expectedTime) {
-						t.Errorf("CNB 镜像模式时间不匹配，期望 %v，得到 %v", expectedTime, info.UpdateTime)
+					minExpectedTime := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+					if !info.UpdateTime.After(minExpectedTime) {
+						t.Errorf("CNB 镜像模式时间过旧，期望晚于 %v，得到 %v", minExpectedTime, info.UpdateTime)
+					}
+
+					if info.Tag != "model" {
+						t.Errorf("CNB 镜像模式 Tag = %q, want %q", info.Tag, "model")
+					}
+
+					if info.Size <= 0 {
+						t.Errorf("CNB 镜像模式 Size = %d, want > 0", info.Size)
 					}
 				}
 			}
@@ -108,6 +120,9 @@ func TestModelUpdaterCheckUpdateTimeout(t *testing.T) {
 		elapsed := time.Since(start)
 
 		if err != nil {
+			if strings.Contains(err.Error(), "状态码: 429") {
+				t.Skipf("CNB rate limited this live test: %v", err)
+			}
 			t.Errorf("第 %d 次检查失败: %v", i+1, err)
 		}
 
@@ -121,5 +136,52 @@ func TestModelUpdaterCheckUpdateTimeout(t *testing.T) {
 		}
 
 		t.Logf("第 %d 次检查耗时: %v", i+1, elapsed)
+	}
+}
+
+func TestFindModelReleaseUsesModelTagMetadata(t *testing.T) {
+	releases := []types.GitHubRelease{
+		{
+			TagName: "v1.0.0",
+			Assets: []types.GitHubAsset{
+				{
+					Name:               "base-dicts.zip",
+					BrowserDownloadURL: "https://example.com/base-dicts.zip",
+					UpdatedAt:          time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+					ID:                 "dict-asset",
+					Size:               11,
+				},
+			},
+		},
+		{
+			TagName: "model",
+			Assets: []types.GitHubAsset{
+				{
+					Name:               types.MODEL_FILE,
+					BrowserDownloadURL: "https://example.com/model.gram",
+					UpdatedAt:          time.Date(2026, 4, 2, 7, 44, 10, 0, time.UTC),
+					ID:                 "model-asset",
+					SHA256:             "abc123",
+					Size:               210421804,
+				},
+			},
+		},
+	}
+
+	info, ok := findModelRelease(releases)
+	if !ok {
+		t.Fatal("findModelRelease() = no match, want match")
+	}
+
+	if info.Tag != "model" {
+		t.Fatalf("info.Tag = %q, want %q", info.Tag, "model")
+	}
+
+	if info.Size != 210421804 {
+		t.Fatalf("info.Size = %d, want %d", info.Size, 210421804)
+	}
+
+	if info.ID != "model-asset" {
+		t.Fatalf("info.ID = %q, want %q", info.ID, "model-asset")
 	}
 }

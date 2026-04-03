@@ -3,6 +3,7 @@ package updater
 import (
 	"fmt"
 
+	"rime-wanxiang-updater/internal/api"
 	"rime-wanxiang-updater/internal/config"
 )
 
@@ -16,12 +17,19 @@ type CombinedUpdater struct {
 
 // NewCombinedUpdater 创建组合更新器
 func NewCombinedUpdater(cfg *config.Manager) *CombinedUpdater {
-	return &CombinedUpdater{
+	combined := &CombinedUpdater{
 		Config:        cfg,
 		SchemeUpdater: NewSchemeUpdater(cfg),
 		DictUpdater:   NewDictUpdater(cfg),
 		ModelUpdater:  NewModelUpdater(cfg),
 	}
+
+	sharedClient := api.NewClient(cfg.Config)
+	combined.SchemeUpdater.APIClient = sharedClient
+	combined.DictUpdater.APIClient = sharedClient
+	combined.ModelUpdater.APIClient = sharedClient
+
+	return combined
 }
 
 // FetchAllUpdates 获取所有更新信息

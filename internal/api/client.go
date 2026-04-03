@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"golang.org/x/net/proxy"
@@ -15,14 +16,27 @@ type Client struct {
 	httpClient  *http.Client
 	config      *types.Config
 	githubToken string
+	cnbBaseURL  string
+	mu          sync.Mutex
+
+	cnbTagsPageCache   map[string]cnbTagsPageResult
+	cnbReleaseTagCache map[string]types.GitHubRelease
+}
+
+type cnbTagsPageResult struct {
+	tags       []string
+	totalPages int
 }
 
 // NewClient 创建新的 API 客户端
 func NewClient(config *types.Config) *Client {
 	return &Client{
-		httpClient:  getHTTPClient(config),
-		config:      config,
-		githubToken: config.GithubToken,
+		httpClient:         getHTTPClient(config),
+		config:             config,
+		githubToken:        config.GithubToken,
+		cnbBaseURL:         "https://cnb.cool",
+		cnbTagsPageCache:   make(map[string]cnbTagsPageResult),
+		cnbReleaseTagCache: make(map[string]types.GitHubRelease),
 	}
 }
 

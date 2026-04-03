@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,6 +70,9 @@ func TestModelStatusRequiresActualInstalledFile(t *testing.T) {
 
 	status, err := updater.GetStatus()
 	if err != nil {
+		if strings.Contains(err.Error(), "状态码: 429") {
+			t.Skipf("CNB rate limited this live test: %v", err)
+		}
 		t.Fatalf("GetStatus() error = %v", err)
 	}
 

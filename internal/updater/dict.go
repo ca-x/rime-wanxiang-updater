@@ -96,27 +96,38 @@ func (d *DictUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 	var err error
 
 	if d.Config.Config.UseMirror {
-		releases, err = d.APIClient.FetchCNBReleases(types.OWNER, types.CNB_REPO, "")
-	} else {
-		// GitHub 使用 dict-nightly tag
-		releases, err = d.APIClient.FetchGitHubReleases(types.OWNER, types.REPO, types.DICT_TAG)
+		latestTag, err := d.APIClient.FetchLatestCNBReleaseTag(types.OWNER, types.CNB_REPO)
+		if err != nil {
+			return nil, fmt.Errorf("获取版本信息失败: %w", err)
+		}
+
+		info, ok, err := d.findCNBDictInfoAtTag(latestTag)
+		if err != nil {
+			return nil, fmt.Errorf("获取版本信息失败: %w", err)
+		}
+		if ok {
+			return info, nil
+		}
+
+		info, ok, err = d.findCNBDictInfoAtTag(types.CNB_DICT_TAG)
+		if err != nil {
+			return nil, fmt.Errorf("获取版本信息失败: %w", err)
+		}
+		if ok {
+			return info, nil
+		}
+
+		return nil, fmt.Errorf("未找到匹配的词库文件: %s", d.Config.Config.DictFile)
 	}
 
+	// GitHub 使用 dict-nightly tag
+	releases, err = d.APIClient.FetchGitHubReleases(types.OWNER, types.REPO, types.DICT_TAG)
 	if err != nil {
 		return nil, fmt.Errorf("获取版本信息失败: %w", err)
 	}
 
 	if len(releases) == 0 {
 		return nil, fmt.Errorf("未找到任何发布版本")
-	}
-
-	if d.Config.Config.UseMirror {
-		info, ok := findDictRelease(releases, d.Config.Config.SchemeFile, d.Config.Config.DictFile)
-		if ok {
-			return info, nil
-		}
-
-		return nil, fmt.Errorf("未找到匹配的词库文件: %s", d.Config.Config.DictFile)
 	}
 
 	for _, release := range releases {
@@ -160,6 +171,31 @@ func findDictRelease(
 	}
 
 	return releaseutil.FindAssetInfoByTag(releases, matchDict, types.CNB_DICT_TAG)
+}
+
+func (d *DictUpdater) findCNBDictInfoAtTag(tag string) (*types.UpdateInfo, bool, error) {
+	release, err := d.APIClient.FetchCNBReleaseByTag(types.OWNER, types.CNB_REPO, tag)
+	if err != nil {
+		return nil, false, err
+	}
+
+	for _, asset := range release.Assets {
+		if asset.Name != d.Config.Config.DictFile {
+			continue
+		}
+
+		return &types.UpdateInfo{
+			Name:       asset.Name,
+			URL:        asset.BrowserDownloadURL,
+			UpdateTime: asset.UpdatedAt,
+			Tag:        release.TagName,
+			SHA256:     asset.SHA256,
+			ID:         asset.ID,
+			Size:       asset.Size,
+		}, true, nil
+	}
+
+	return nil, false, nil
 }
 
 // Run 执行更新

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"rime-wanxiang-updater/internal/config"
 	"rime-wanxiang-updater/internal/fileutil"
@@ -88,62 +87,57 @@ func (m *ModelUpdater) GetStatus() (*types.UpdateStatus, error) {
 
 // CheckUpdate 检查更新
 func (m *ModelUpdater) CheckUpdate() (*types.UpdateInfo, error) {
-	var releases []types.GitHubRelease
-	var err error
-
 	if m.Config.Config.UseMirror {
-		// CNB 镜像：模型文件不在版本列表中，使用静态下载地址
-		modelURL := fmt.Sprintf("https://cnb.cool/%s/%s/-/releases/download/model/%s", types.OWNER, types.CNB_REPO, types.MODEL_FILE)
-
-		// 对于 CNB 镜像，使用 HTTP Last-Modified 作为版本标识
-		// 如果获取失败，使用一个固定的时间戳，避免每次都认为有更新
-		updateTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) // 默认固定时间
-		if resp, err := m.APIClient.Head(modelURL); err == nil {
-			if lastModified := resp.Header.Get("Last-Modified"); lastModified != "" {
-				if t, err := time.Parse(time.RFC1123, lastModified); err == nil {
-					updateTime = t
-				}
-			}
-		}
-
-		return &types.UpdateInfo{
-			Name:       types.MODEL_FILE,
-			URL:        modelURL,
-			UpdateTime: updateTime,
-			Tag:        updateTime.Format("2006-01-02"), // 使用日期作为 Tag
-			Size:       0,                               // CNB 不提供文件大小信息
-		}, nil
-	} else {
-		// GitHub：从 RIME-LMDG 仓库获取，使用 tag "LTS"
-		releases, err = m.APIClient.FetchGitHubReleases(types.OWNER, types.MODEL_REPO, types.MODEL_TAG)
+		release, err := m.APIClient.FetchCNBReleaseByTag(types.OWNER, types.CNB_REPO, "model")
 		if err != nil {
-			return nil, fmt.Errorf("获取版本信息失败: %w", err)
+			return nil, fmt.Errorf("获取 CNB 模型版本信息失败: %w", err)
 		}
 
-		if len(releases) == 0 {
-			return nil, fmt.Errorf("未找到任何发布版本")
+		info, ok := findModelRelease([]types.GitHubRelease{*release})
+		if !ok {
+			return nil, fmt.Errorf("未找到匹配的模型文件: %s", types.MODEL_FILE)
 		}
 
-		// 遍历所有 release 查找模型文件
-		for i := len(releases) - 1; i >= 0; i-- {
-			release := releases[i]
+		return info, nil
+	}
 
-			for _, asset := range release.Assets {
-				// 查找 .gram 文件（不包含 mini）
-				if asset.Name == types.MODEL_FILE {
-					return &types.UpdateInfo{
-						Name:       asset.Name,
-						URL:        asset.BrowserDownloadURL,
-						UpdateTime: asset.UpdatedAt,
-						Tag:        release.TagName,
-						Size:       asset.Size,
-					}, nil
-				}
-			}
-		}
+	releases, err := m.APIClient.FetchGitHubReleases(types.OWNER, types.MODEL_REPO, types.MODEL_TAG)
+	if err != nil {
+		return nil, fmt.Errorf("获取版本信息失败: %w", err)
+	}
 
+	if len(releases) == 0 {
+		return nil, fmt.Errorf("未找到任何发布版本")
+	}
+
+	info, ok := findModelRelease(releases)
+	if !ok {
 		return nil, fmt.Errorf("未找到匹配的模型文件: %s", types.MODEL_FILE)
 	}
+
+	return info, nil
+}
+
+func findModelRelease(releases []types.GitHubRelease) (*types.UpdateInfo, bool) {
+	for _, release := range releases {
+		for _, asset := range release.Assets {
+			if asset.Name != types.MODEL_FILE {
+				continue
+			}
+
+			return &types.UpdateInfo{
+				Name:       asset.Name,
+				URL:        asset.BrowserDownloadURL,
+				UpdateTime: asset.UpdatedAt,
+				Tag:        release.TagName,
+				SHA256:     asset.SHA256,
+				ID:         asset.ID,
+				Size:       asset.Size,
+			}, true
+		}
+	}
+
+	return nil, false
 }
 
 // Run 执行更新

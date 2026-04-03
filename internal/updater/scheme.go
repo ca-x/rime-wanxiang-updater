@@ -95,11 +95,19 @@ func (s *SchemeUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 	var err error
 
 	if s.Config.Config.UseMirror {
-		releases, err = s.APIClient.FetchCNBReleases(types.OWNER, types.CNB_REPO, "")
-	} else {
-		releases, err = s.APIClient.FetchGitHubReleases(types.OWNER, types.REPO, "")
+		info, err := s.APIClient.FindLatestCNBAssetInfo(
+			types.OWNER,
+			types.CNB_REPO,
+			func(name string) bool { return name == s.Config.Config.SchemeFile },
+			types.CNB_DICT_TAG,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("获取版本信息失败: %w", err)
+		}
+		return info, nil
 	}
 
+	releases, err = s.APIClient.FetchGitHubReleases(types.OWNER, types.REPO, "")
 	if err != nil {
 		return nil, fmt.Errorf("获取版本信息失败: %w", err)
 	}

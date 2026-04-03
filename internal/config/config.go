@@ -15,7 +15,6 @@ import (
 
 	"rime-wanxiang-updater/internal/api"
 	"rime-wanxiang-updater/internal/i18n"
-	"rime-wanxiang-updater/internal/releaseutil"
 	"rime-wanxiang-updater/internal/types"
 )
 
@@ -416,27 +415,27 @@ func (m *Manager) GetActualFilenames(schemeKey string) (string, string, error) {
 	// 获取方案文件
 	var releases []types.GitHubRelease
 	var err error
-
-	if m.Config.UseMirror {
-		releases, err = client.FetchCNBReleases(types.OWNER, types.CNB_REPO, "")
-	} else {
-		releases, err = client.FetchGitHubReleases(types.OWNER, types.REPO, "")
-	}
-
-	if err != nil {
-		return "", "", fmt.Errorf("获取版本信息失败: %w", err)
-	}
-
 	var schemeFile, dictFile string
 	var preferredSchemeTag string
 
 	if m.Config.UseMirror {
-		schemeInfo, ok := releaseutil.FindPreferredAssetInfo(releases, schemeRegex.MatchString, types.CNB_DICT_TAG)
-		if ok {
-			schemeFile = schemeInfo.Name
-			preferredSchemeTag = schemeInfo.Tag
+		schemeInfo, fetchErr := client.FindLatestCNBAssetInfo(
+			types.OWNER,
+			types.CNB_REPO,
+			schemeRegex.MatchString,
+			types.CNB_DICT_TAG,
+		)
+		if fetchErr != nil {
+			return "", "", fmt.Errorf("获取版本信息失败: %w", fetchErr)
 		}
+		schemeFile = schemeInfo.Name
+		preferredSchemeTag = schemeInfo.Tag
 	} else {
+		releases, err = client.FetchGitHubReleases(types.OWNER, types.REPO, "")
+		if err != nil {
+			return "", "", fmt.Errorf("获取版本信息失败: %w", err)
+		}
+
 		// 查找方案文件
 		for _, release := range releases {
 			for _, asset := range release.Assets {
@@ -453,30 +452,39 @@ func (m *Manager) GetActualFilenames(schemeKey string) (string, string, error) {
 
 	// 获取词库文件
 	if m.Config.UseMirror {
-		releases, err = client.FetchCNBReleases(types.OWNER, types.CNB_REPO, "")
+		if preferredSchemeTag != "" {
+			release, fetchErr := client.FetchCNBReleaseByTag(types.OWNER, types.CNB_REPO, preferredSchemeTag)
+			if fetchErr != nil {
+				return "", "", fmt.Errorf("获取词库信息失败: %w", fetchErr)
+			}
+
+			for _, asset := range release.Assets {
+				if dictRegex.MatchString(asset.Name) {
+					dictFile = asset.Name
+					break
+				}
+			}
+		}
+
+		if dictFile == "" {
+			dictInfo, fetchErr := client.FindLatestCNBAssetInfo(
+				types.OWNER,
+				types.CNB_REPO,
+				dictRegex.MatchString,
+				types.CNB_DICT_TAG,
+			)
+			if fetchErr != nil {
+				return "", "", fmt.Errorf("获取词库信息失败: %w", fetchErr)
+			}
+			dictFile = dictInfo.Name
+		}
 	} else {
 		// GitHub 使用 dict-nightly tag
 		releases, err = client.FetchGitHubReleases(types.OWNER, types.REPO, types.DICT_TAG)
-	}
-
-	if err != nil {
-		return "", "", fmt.Errorf("获取词库信息失败: %w", err)
-	}
-
-	if m.Config.UseMirror {
-		if preferredSchemeTag != "" {
-			selected, ok := releaseutil.FindAssetInfoByTag(releases, dictRegex.MatchString, preferredSchemeTag)
-			if ok {
-				dictFile = selected.Name
-			}
+		if err != nil {
+			return "", "", fmt.Errorf("获取词库信息失败: %w", err)
 		}
-		if dictFile == "" {
-			selected, ok := releaseutil.FindAssetInfoByTag(releases, dictRegex.MatchString, types.CNB_DICT_TAG)
-			if ok {
-				dictFile = selected.Name
-			}
-		}
-	} else {
+
 		// 查找词库文件
 		for _, release := range releases {
 			for _, asset := range release.Assets {
