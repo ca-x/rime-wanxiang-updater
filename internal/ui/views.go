@@ -245,28 +245,67 @@ func (m Model) renderHintStrip(items ...string) string {
 		return ""
 	}
 
-	chips := make([]string, 0, len(items))
+	filtered := make([]string, 0, len(items))
 	for _, item := range items {
-		chips = append(chips, lipgloss.NewStyle().
-			Foreground(m.Styles.Muted).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(m.Styles.Border).
-			Padding(0, 1).
-			Render(item))
+		if strings.TrimSpace(item) != "" {
+			filtered = append(filtered, item)
+		}
+	}
+	if len(filtered) == 0 {
+		return ""
 	}
 
-	row := make([]string, 0, len(chips)*2-1)
-	for i, chip := range chips {
-		if i > 0 {
-			row = append(row, " ")
+	contentWidth := m.pageWidth() - 4
+	if contentWidth < 12 {
+		contentWidth = 12
+	}
+
+	const separator = "  ·  "
+	separatorWidth := lipgloss.Width(separator)
+
+	lines := make([]string, 0, len(filtered))
+	currentLine := ""
+	currentWidth := 0
+
+	for _, item := range filtered {
+		itemWidth := lipgloss.Width(item)
+
+		if currentLine == "" {
+			currentLine = item
+			currentWidth = itemWidth
+			continue
 		}
-		row = append(row, chip)
+
+		if currentWidth+separatorWidth+itemWidth <= contentWidth {
+			currentLine += separator + item
+			currentWidth += separatorWidth + itemWidth
+			continue
+		}
+
+		lines = append(lines, currentLine)
+		currentLine = item
+		currentWidth = itemWidth
+	}
+
+	if currentLine != "" {
+		lines = append(lines, currentLine)
+	}
+
+	renderedLines := make([]string, 0, len(lines))
+	for _, line := range lines {
+		renderedLines = append(renderedLines, lipgloss.NewStyle().
+			Width(contentWidth).
+			Align(lipgloss.Center).
+			Foreground(m.Styles.Muted).
+			Render(line))
 	}
 
 	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.Styles.Border).
+		Padding(0, 1).
 		Width(m.pageWidth()).
-		Align(lipgloss.Center).
-		Render(lipgloss.JoinHorizontal(lipgloss.Center, row...))
+		Render(strings.Join(renderedLines, "\n"))
 }
 
 func (m Model) renderStatusBadge(text string, color lipgloss.Color) string {
@@ -316,20 +355,26 @@ func (m Model) renderMenuEntry(index int, icon, title, desc string, selected boo
 		Render(selectedContent)
 }
 
-func (m Model) renderMenuList(items []struct {
+type menuEntry struct {
 	icon string
 	text string
 	desc string
-}) string {
+}
+
+func (m Model) renderChoiceList(items []menuEntry, choice int) string {
 	rows := make([]string, 0, len(items))
 	for i, item := range items {
-		entry := m.renderMenuEntry(i+1, item.icon, item.text, item.desc, i == m.MenuChoice)
+		entry := m.renderMenuEntry(i+1, item.icon, item.text, item.desc, i == choice)
 		rows = append(rows, lipgloss.NewStyle().Width(m.pageWidth()).Align(lipgloss.Center).Render(entry))
 	}
 
 	return lipgloss.NewStyle().
 		Width(m.pageWidth()).
 		Render(strings.Join(rows, "\n"))
+}
+
+func (m Model) renderMenuList(items []menuEntry) string {
+	return m.renderChoiceList(items, m.MenuChoice)
 }
 
 func (m Model) renderHeaderBlock() string {
@@ -521,11 +566,7 @@ func (m Model) renderMenu() string {
 	})
 	b.WriteString(statusContent + "\n\n")
 
-	menuItems := []struct {
-		icon string
-		text string
-		desc string
-	}{
+	menuItems := []menuEntry{
 		{
 			termcolor.GetFallbackIcon("⚡", "⟳"),
 			m.t("menu.auto_update.title"),
@@ -553,8 +594,8 @@ func (m Model) renderMenu() string {
 		},
 		{
 			termcolor.GetFallbackIcon("🎨", "◐"),
-			m.t("menu.theme.title", m.ThemeManager.CurrentName()),
-			m.t("menu.theme.desc"),
+			m.t("menu.custom.title"),
+			m.t("menu.custom.desc"),
 		},
 		{
 			termcolor.GetFallbackIcon("🧭", "◎"),
@@ -589,10 +630,48 @@ func (m Model) renderMenu() string {
 			m.t("ui.hint.shortcuts"),
 			m.t("ui.hint.nav"),
 			m.t("ui.hint.select"),
+			m.t("ui.hint.about"),
 			m.t("ui.hint.quit"),
 		),
 	)
 	b.WriteString("\n\n")
+
+	return m.renderScreen(b.String())
+}
+
+func (m Model) renderAbout() string {
+	var b strings.Builder
+
+	b.WriteString(m.renderHeaderBlock())
+	b.WriteString(m.renderTitle("✦ "+m.t("about.title")+" ✦") + "\n\n")
+
+	hero := lipgloss.NewStyle().
+		Foreground(m.Styles.Accent).
+		Bold(true).
+		Render(m.t("about.hero"))
+	subtitle := lipgloss.NewStyle().
+		Foreground(m.Styles.Muted).
+		Render(m.t("about.subtitle"))
+
+	b.WriteString(hero + "\n")
+	b.WriteString(subtitle + "\n\n")
+
+	card := m.renderPanel(strings.Join([]string{
+		m.t("about.label.en") + "  " + m.t("about.name.en"),
+		m.t("about.label.zh") + "  " + m.t("about.name.zh"),
+		m.t("about.label.home") + "  " + m.t("about.homepage"),
+		"",
+		m.t("about.body"),
+	}, "\n"), m.Styles.Accent)
+	b.WriteString(card + "\n\n")
+
+	footer := lipgloss.NewStyle().
+		Foreground(m.Styles.Primary).
+		Bold(true).
+		Render(m.t("about.footer"))
+	b.WriteString(footer + "\n\n")
+	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n\n")
+	b.WriteString(m.renderHintStrip(m.t("ui.hint.back"), m.t("ui.hint.quit")))
 
 	return m.renderScreen(b.String())
 }

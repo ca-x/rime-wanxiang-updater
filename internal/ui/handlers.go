@@ -122,9 +122,10 @@ func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.State = ViewConfig
 		return m, nil
 	case "6":
-		// 切换主题 - 进入主题选择
-		m.InitThemeListView("theme_quick")
-		m.State = ViewThemeList
+		m.State = ViewCustomMenu
+		return m, nil
+	case "a", "A":
+		m.State = ViewAbout
 		return m, nil
 	case "7":
 		m.State = ViewWizard
@@ -166,9 +167,7 @@ func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.State = ViewConfig
 			return m, nil
 		case 5:
-			// 切换主题
-			m.InitThemeListView("theme_quick")
-			m.State = ViewThemeList
+			m.State = ViewCustomMenu
 			return m, nil
 		case 6:
 			m.State = ViewWizard
@@ -177,6 +176,17 @@ func (m Model) handleMenuInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case 7:
 			return m, tea.Quit
 		}
+	}
+	return m, nil
+}
+
+func (m Model) handleAboutInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q", "esc":
+		m.State = ViewMenu
+		return m, nil
+	case "ctrl+c":
+		return m, tea.Quit
 	}
 	return m, nil
 }

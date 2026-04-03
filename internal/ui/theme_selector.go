@@ -12,7 +12,11 @@ import (
 func (m Model) handleThemeListInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "esc":
-		m.State = ViewConfig
+		if m.EditingKey == "theme_quick" {
+			m.State = ViewCustomMenu
+		} else {
+			m.State = ViewConfig
+		}
 		return m, nil
 
 	case "ctrl+c":
@@ -74,9 +78,9 @@ func (m Model) applyThemeChoice() (tea.Model, tea.Cmd) {
 		m.Styles = DefaultStyles(m.ThemeManager)
 	}
 
-	// 快速切换后返回主菜单，其他情况返回配置页面
+	// 自定义菜单中的程序 TUI 主题选择返回自定义菜单，其他情况返回配置页面
 	if m.EditingKey == "theme_quick" {
-		m.State = ViewMenu
+		m.State = ViewCustomMenu
 	} else {
 		m.State = ViewConfig
 	}

@@ -172,6 +172,25 @@ func TestRenderMenuUsesHintStripInsteadOfLegacyHintLine(t *testing.T) {
 	}
 }
 
+func TestRenderHintStripUsesSinglePanel(t *testing.T) {
+	m := Model{
+		Width: 80,
+		Styles: &Styles{
+			Muted:  lipgloss.Color(""),
+			Border: lipgloss.Color(""),
+		},
+	}
+
+	rendered := m.renderHintStrip("1-8 快捷操作", "↑↓ / J K", "Enter 选择", "A 关于", "Q 退出")
+
+	if got := strings.Count(rendered, "╭"); got != 1 {
+		t.Fatalf("renderHintStrip() top border count = %d, want 1: %q", got, rendered)
+	}
+	if got := strings.Count(rendered, "╰"); got != 1 {
+		t.Fatalf("renderHintStrip() bottom border count = %d, want 1: %q", got, rendered)
+	}
+}
+
 func nonEmptyLines(text string) []string {
 	rawLines := strings.Split(text, "\n")
 	lines := make([]string, 0, len(rawLines))

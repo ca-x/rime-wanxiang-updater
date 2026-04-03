@@ -94,6 +94,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleMenuInput(msg)
 		case ViewConfig:
 			return m.handleConfigInput(msg)
+		case ViewAbout:
+			return m.handleAboutInput(msg)
 		case ViewConfigEdit:
 			return m.handleConfigEditInput(msg)
 		case ViewExcludeList:
@@ -106,6 +108,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleFcitxConflictInput(msg)
 		case ViewThemeList:
 			return m.handleThemeListInput(msg)
+		case ViewCustomMenu:
+			return m.handleCustomMenuInput(msg)
+		case ViewThemePatchList:
+			return m.handleThemePatchListInput(msg)
+		case ViewThemePatchDefaultList:
+			return m.handleThemePatchDefaultListInput(msg)
+		case ViewThemePatchDeployPrompt:
+			return m.handleThemePatchDeployPromptInput(msg)
+		case ViewFcitxThemeList:
+			return m.handleFcitxThemeListInput(msg)
+		case ViewFcitxThemeDeployPrompt:
+			return m.handleFcitxThemeDeployPromptInput(msg)
 		case ViewEngineSelector:
 			return m.handleEngineSelectorInput(msg)
 		case ViewEnginePrompt:
@@ -152,6 +166,8 @@ func (m Model) View() string {
 		return m.renderUpdating()
 	case ViewConfig:
 		return m.renderConfig()
+	case ViewAbout:
+		return m.renderAbout()
 	case ViewConfigEdit:
 		return m.renderConfigEdit()
 	case ViewExcludeList:
@@ -164,6 +180,18 @@ func (m Model) View() string {
 		return m.renderFcitxConflict()
 	case ViewThemeList:
 		return m.renderThemeList()
+	case ViewCustomMenu:
+		return m.renderCustomMenu()
+	case ViewThemePatchList:
+		return m.renderThemePatchList()
+	case ViewThemePatchDefaultList:
+		return m.renderThemePatchDefaultList()
+	case ViewThemePatchDeployPrompt:
+		return m.renderThemePatchDeployPrompt()
+	case ViewFcitxThemeList:
+		return m.renderFcitxThemeList()
+	case ViewFcitxThemeDeployPrompt:
+		return m.renderFcitxThemeDeployPrompt()
 	case ViewEngineSelector:
 		return m.renderEngineSelector()
 	case ViewEnginePrompt:

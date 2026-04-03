@@ -19,11 +19,18 @@ const (
 	ViewConfig
 	ViewConfigEdit     // 配置编辑
 	ViewResult         // 显示更新结果
+	ViewAbout          // 关于界面
 	ViewExcludeList    // 排除文件列表
 	ViewExcludeEdit    // 编辑排除模式
 	ViewExcludeAdd     // 添加排除模式
 	ViewFcitxConflict  // Fcitx 目录冲突对话框
 	ViewThemeList      // 主题列表
+	ViewCustomMenu     // 自定义子菜单
+	ViewThemePatchList // 主题 Patch 多选列表
+	ViewThemePatchDefaultList
+	ViewThemePatchDeployPrompt
+	ViewFcitxThemeList
+	ViewFcitxThemeDeployPrompt
 	ViewEngineSelector // 引擎选择界面
 	ViewEnginePrompt   // 多引擎未配置提示对话框
 )
@@ -112,8 +119,16 @@ type Model struct {
 	AutoUpdateCancelled bool
 
 	// Theme selector UI state
-	ThemeListChoice int
-	ThemeList       []string
+	ThemeListChoice         int
+	ThemeList               []string
+	CustomMenuChoice        int
+	ThemePatchChoice        int
+	ThemePatchSelections    map[string]bool
+	ThemePatchDefaultChoice int
+	ThemePatchDefaultKey    string
+	FcitxThemeChoice        int
+	FcitxThemeList          []string
+	FcitxThemeSelected      string
 
 	// Engine selector UI state
 	EngineSelections map[string]bool // 引擎名 -> 是否选中
