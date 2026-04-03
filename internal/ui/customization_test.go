@@ -355,6 +355,34 @@ func TestRenderThemePatchListShowsOnlyCurrentPage(t *testing.T) {
 	}
 }
 
+func TestRenderThemePatchDefaultListShowsOnlyCurrentPage(t *testing.T) {
+	m := newThemePatchTestModel(t)
+	m.State = ViewThemePatchDefaultList
+	m.Width = 80
+	m.Height = 18
+	m.ThemePatchSelections = map[string]bool{
+		"jianchun":     true,
+		"win11_light":  true,
+		"win11_dark":   true,
+		"mac_light":    true,
+		"wechat":       true,
+		"mac_dark":     true,
+		"starcraft":    true,
+	}
+
+	rendered := m.renderThemePatchDefaultList()
+
+	if !strings.Contains(rendered, "jianchun") {
+		t.Fatalf("renderThemePatchDefaultList() should include first page item: %q", rendered)
+	}
+	if strings.Contains(rendered, "starcraft") {
+		t.Fatalf("renderThemePatchDefaultList() should not include items outside current page: %q", rendered)
+	}
+	if !strings.Contains(rendered, "第 1/") {
+		t.Fatalf("renderThemePatchDefaultList() should include pagination summary: %q", rendered)
+	}
+}
+
 func newThemePatchTestModel(t *testing.T) Model {
 	t.Helper()
 

@@ -9,6 +9,7 @@ import (
 	"testing/fstest"
 
 	"rime-wanxiang-updater/internal/config"
+	"rime-wanxiang-updater/internal/theme"
 	"rime-wanxiang-updater/internal/types"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -341,6 +342,112 @@ func TestApplyFcitxThemeChoiceReportsSyncError(t *testing.T) {
 
 	if got.State != ViewResult {
 		t.Fatalf("state after sync error = %v, want %v", got.State, ViewResult)
+	}
+}
+
+func TestHandleFcitxThemeListInputFiltersResultsAndEscClearsSearch(t *testing.T) {
+	m := newFcitxThemeTestModel(t)
+
+	next, _ := m.handleFcitxThemeListInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ra")})
+	got := next.(Model)
+	if got.FcitxThemeSearchQuery != "ra" {
+		t.Fatalf("FcitxThemeSearchQuery = %q, want %q", got.FcitxThemeSearchQuery, "ra")
+	}
+	if len(got.fcitxThemeFilteredList()) != 1 {
+		t.Fatalf("fcitxThemeFilteredList() count = %d, want 1", len(got.fcitxThemeFilteredList()))
+	}
+
+	next, _ = got.handleFcitxThemeListInput(tea.KeyMsg{Type: tea.KeyEsc})
+	got = next.(Model)
+	if got.State != ViewFcitxThemeList {
+		t.Fatalf("handleFcitxThemeListInput(esc with search) state = %v, want %v", got.State, ViewFcitxThemeList)
+	}
+	if got.FcitxThemeSearchQuery != "" {
+		t.Fatalf("FcitxThemeSearchQuery after esc = %q, want empty", got.FcitxThemeSearchQuery)
+	}
+}
+
+func TestHandleFcitxThemeListInputSpaceSelectsFilteredTheme(t *testing.T) {
+	m := newFcitxThemeTestModel(t)
+	m.FcitxThemeSearchQuery = "cha"
+	m.syncFcitxThemeFilterState()
+
+	next, _ := m.handleFcitxThemeListInput(tea.KeyMsg{Type: tea.KeySpace})
+	got := next.(Model)
+
+	if !got.FcitxThemeSelections["charlie"] {
+		t.Fatalf("FcitxThemeSelections should contain filtered theme %q: %#v", "charlie", got.FcitxThemeSelections)
+	}
+	if got.FcitxThemeSelections["alpha"] {
+		t.Fatalf("FcitxThemeSelections should not contain unfiltered first theme: %#v", got.FcitxThemeSelections)
+	}
+}
+
+func TestRenderFcitxThemeListShowsOnlyCurrentPage(t *testing.T) {
+	m := newFcitxThemeTestModel(t)
+	m.Width = 80
+	m.Height = 18
+
+	rendered := m.renderFcitxThemeList()
+
+	if !strings.Contains(rendered, "alpha") {
+		t.Fatalf("renderFcitxThemeList() should include first page item: %q", rendered)
+	}
+	if strings.Contains(rendered, "golf") {
+		t.Fatalf("renderFcitxThemeList() should not include items outside current page: %q", rendered)
+	}
+	if !strings.Contains(rendered, "第 1/") {
+		t.Fatalf("renderFcitxThemeList() should include pagination summary: %q", rendered)
+	}
+}
+
+func TestRenderFcitxThemeDefaultListShowsOnlyCurrentPage(t *testing.T) {
+	m := newFcitxThemeTestModel(t)
+	m.State = ViewFcitxThemeDefaultList
+	m.Width = 80
+	m.Height = 18
+	m.FcitxThemeSelections = map[string]bool{
+		"alpha":   true,
+		"bravo":   true,
+		"charlie": true,
+		"delta":   true,
+		"echo":    true,
+		"foxtrot": true,
+		"golf":    true,
+	}
+
+	rendered := m.renderFcitxThemeDefaultList()
+
+	if !strings.Contains(rendered, "alpha") {
+		t.Fatalf("renderFcitxThemeDefaultList() should include first page item: %q", rendered)
+	}
+	if strings.Contains(rendered, "golf") {
+		t.Fatalf("renderFcitxThemeDefaultList() should not include items outside current page: %q", rendered)
+	}
+	if !strings.Contains(rendered, "第 1/") {
+		t.Fatalf("renderFcitxThemeDefaultList() should include pagination summary: %q", rendered)
+	}
+}
+
+func newFcitxThemeTestModel(t *testing.T) Model {
+	t.Helper()
+
+	themeMgr := theme.NewManager()
+	if err := themeMgr.SetTheme("one-dark"); err != nil {
+		t.Fatalf("SetTheme() error = %v", err)
+	}
+
+	return Model{
+		State:          ViewFcitxThemeList,
+		ThemeManager:   themeMgr,
+		Styles:         DefaultStyles(themeMgr),
+		FcitxThemeList: []string{"alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf"},
+		Cfg: &config.Manager{
+			Config: &types.Config{
+				Language:         "zh-CN",
+				InstalledEngines: []string{"fcitx5"},
+			},
+		},
 	}
 }
 

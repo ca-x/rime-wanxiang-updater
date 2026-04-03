@@ -246,7 +246,7 @@ func (m Model) themePatchFilteredDefinitions() []themePatchDefinition {
 	return filtered
 }
 
-func (m Model) themePatchPageSize() int {
+func (m Model) pagedListPageSize() int {
 	if m.Height <= 0 {
 		return 8
 	}
@@ -262,14 +262,14 @@ func (m Model) themePatchPageSize() int {
 	return pageSize
 }
 
-func (m Model) themePatchPageWindow(total int) (start, end, currentPage, totalPages int) {
+func (m Model) pagedListPageWindow(choice, total int) (start, end, currentPage, totalPages int) {
 	if total == 0 {
 		return 0, 0, 0, 0
 	}
 
-	pageSize := m.themePatchPageSize()
+	pageSize := m.pagedListPageSize()
 	totalPages = (total + pageSize - 1) / pageSize
-	currentPage = (m.ThemePatchChoice / pageSize) + 1
+	currentPage = (choice / pageSize) + 1
 	if currentPage > totalPages {
 		currentPage = totalPages
 	}
@@ -283,14 +283,28 @@ func (m Model) themePatchPageWindow(total int) (start, end, currentPage, totalPa
 	return start, end, currentPage, totalPages
 }
 
-func (m Model) themePatchPageSummary(filteredCount int) string {
-	totalCount := len(themePatchDefinitions())
+func (m Model) pagedListPageSummary(choice, filteredCount, totalCount int, pageKey, emptyKey string) string {
 	if filteredCount == 0 {
-		return m.t("custom.theme_patch.page_empty", totalCount)
+		return m.t(emptyKey, totalCount)
 	}
 
-	_, _, currentPage, totalPages := m.themePatchPageWindow(filteredCount)
-	return m.t("custom.theme_patch.page", currentPage, totalPages, filteredCount, totalCount)
+	_, _, currentPage, totalPages := m.pagedListPageWindow(choice, filteredCount)
+	return m.t(pageKey, currentPage, totalPages, filteredCount, totalCount)
+}
+
+func (m Model) themePatchPageWindow(total int) (start, end, currentPage, totalPages int) {
+	return m.pagedListPageWindow(m.ThemePatchChoice, total)
+}
+
+func (m Model) themePatchPageSummary(filteredCount int) string {
+	totalCount := len(themePatchDefinitions())
+	return m.pagedListPageSummary(
+		m.ThemePatchChoice,
+		filteredCount,
+		totalCount,
+		"custom.theme_patch.page",
+		"custom.theme_patch.page_empty",
+	)
 }
 
 func (m *Model) toggleThemePatchSelection() {
@@ -485,7 +499,9 @@ func (m Model) renderThemePatchDefaultList() string {
 	}
 
 	var listContent strings.Builder
-	for i, definition := range selected {
+	start, end, _, _ := m.pagedListPageWindow(m.ThemePatchDefaultChoice, len(selected))
+	for i := start; i < end; i++ {
+		definition := selected[i]
 		cursor := "  "
 		style := lipgloss.NewStyle().
 			Foreground(m.Styles.Foreground).
@@ -502,6 +518,13 @@ func (m Model) renderThemePatchDefaultList() string {
 
 	b.WriteString(m.renderPanel(strings.TrimSuffix(listContent.String(), "\n"), m.Styles.Secondary) + "\n\n")
 	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n\n")
+	b.WriteString(m.Styles.Hint.Render(m.pagedListPageSummary(
+		m.ThemePatchDefaultChoice,
+		len(selected),
+		len(selected),
+		"custom.theme_patch.page",
+		"custom.theme_patch.page_empty",
+	)) + "\n\n")
 	b.WriteString(m.Styles.Hint.Render(m.t("custom.theme_patch.default_hint")) + "\n\n")
 	b.WriteString(m.renderHintStrip(m.t("ui.hint.nav"), m.t("ui.hint.apply_theme"), m.t("ui.hint.back")))
 
@@ -583,45 +606,108 @@ func (m Model) openFcitxThemeList() (tea.Model, tea.Cmd) {
 
 	m.FcitxThemeList = themes
 	m.FcitxThemeChoice = 0
+	m.FcitxThemeSearchQuery = ""
 	m.FcitxThemeSelections = selections
 	m.FcitxThemeDefaultChoice = 0
 	m.FcitxThemeSelected = ""
+	m.syncFcitxThemeFilterState()
 	m.State = ViewFcitxThemeList
 	return m, nil
 }
 
 func (m Model) handleFcitxThemeListInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "q", "esc":
+	switch msg.Type {
+	case tea.KeyRunes:
+		m.FcitxThemeSearchQuery += string(msg.Runes)
+		m.syncFcitxThemeFilterState()
+		return m, nil
+	case tea.KeyBackspace:
+		if m.FcitxThemeSearchQuery == "" {
+			return m, nil
+		}
+		queryRunes := []rune(m.FcitxThemeSearchQuery)
+		m.FcitxThemeSearchQuery = string(queryRunes[:len(queryRunes)-1])
+		m.syncFcitxThemeFilterState()
+		return m, nil
+	case tea.KeyEsc:
+		if m.FcitxThemeSearchQuery != "" {
+			m.FcitxThemeSearchQuery = ""
+			m.syncFcitxThemeFilterState()
+			return m, nil
+		}
 		m.State = ViewCustomMenu
 		return m, nil
-	case "ctrl+c":
+	case tea.KeyCtrlC:
 		return m, tea.Quit
-	case "up", "k":
+	case tea.KeyUp:
 		if m.FcitxThemeChoice > 0 {
 			m.FcitxThemeChoice--
 		}
-	case "down", "j":
-		if m.FcitxThemeChoice < len(m.FcitxThemeList)-1 {
+	case tea.KeyDown:
+		if m.FcitxThemeChoice < len(m.fcitxThemeFilteredList())-1 {
 			m.FcitxThemeChoice++
 		}
-	case " ":
+	case tea.KeySpace:
 		m.toggleFcitxThemeSelection()
-	case "enter":
+	case tea.KeyEnter:
 		return m.applyFcitxThemeChoice()
 	}
 
 	return m, nil
 }
 
+func (m *Model) syncFcitxThemeFilterState() {
+	filtered := m.fcitxThemeFilteredList()
+	switch {
+	case len(filtered) == 0:
+		m.FcitxThemeChoice = 0
+	case m.FcitxThemeChoice < 0:
+		m.FcitxThemeChoice = 0
+	case m.FcitxThemeChoice >= len(filtered):
+		m.FcitxThemeChoice = len(filtered) - 1
+	}
+}
+
+func (m Model) fcitxThemeFilteredList() []string {
+	query := strings.ToLower(strings.TrimSpace(m.FcitxThemeSearchQuery))
+	if query == "" {
+		return m.FcitxThemeList
+	}
+
+	filtered := make([]string, 0, len(m.FcitxThemeList))
+	for _, themeName := range m.FcitxThemeList {
+		if strings.Contains(strings.ToLower(themeName), query) {
+			filtered = append(filtered, themeName)
+		}
+	}
+
+	return filtered
+}
+
+func (m Model) fcitxThemePageWindow(total int) (start, end, currentPage, totalPages int) {
+	return m.pagedListPageWindow(m.FcitxThemeChoice, total)
+}
+
+func (m Model) fcitxThemePageSummary(filteredCount int) string {
+	totalCount := len(m.FcitxThemeList)
+	return m.pagedListPageSummary(
+		m.FcitxThemeChoice,
+		filteredCount,
+		totalCount,
+		"custom.fcitx_theme.page",
+		"custom.fcitx_theme.page_empty",
+	)
+}
+
 func (m *Model) toggleFcitxThemeSelection() {
-	if m.FcitxThemeChoice < 0 || m.FcitxThemeChoice >= len(m.FcitxThemeList) {
+	filtered := m.fcitxThemeFilteredList()
+	if m.FcitxThemeChoice < 0 || m.FcitxThemeChoice >= len(filtered) {
 		return
 	}
 	if m.FcitxThemeSelections == nil {
 		m.FcitxThemeSelections = make(map[string]bool)
 	}
-	themeName := m.FcitxThemeList[m.FcitxThemeChoice]
+	themeName := filtered[m.FcitxThemeChoice]
 	m.FcitxThemeSelections[themeName] = !m.FcitxThemeSelections[themeName]
 	if !m.FcitxThemeSelections[themeName] {
 		delete(m.FcitxThemeSelections, themeName)
@@ -667,28 +753,56 @@ func (m Model) renderFcitxThemeList() string {
 		Foreground(m.Styles.Muted).
 		Render(m.t("custom.fcitx_theme.selected_count", len(m.selectedFcitxThemes()))) + "\n\n")
 
+	searchValue := m.FcitxThemeSearchQuery
+	searchStyle := lipgloss.NewStyle().Foreground(m.Styles.Foreground)
+	if strings.TrimSpace(searchValue) == "" {
+		searchValue = m.t("custom.fcitx_theme.search_placeholder")
+		searchStyle = lipgloss.NewStyle().Foreground(m.Styles.Muted)
+	}
+	searchLabel := lipgloss.NewStyle().
+		Foreground(m.Styles.Secondary).
+		Bold(true).
+		Render(m.t("custom.fcitx_theme.search_label"))
+	searchLine := lipgloss.JoinHorizontal(lipgloss.Left, searchLabel, searchStyle.Render(searchValue))
+	b.WriteString(m.renderPanel(searchLine, m.Styles.Border) + "\n\n")
+
+	filtered := m.fcitxThemeFilteredList()
 	var listContent strings.Builder
-	for i, themeName := range m.FcitxThemeList {
-		cursor := "  "
-		marker := "[ ]"
-		if m.FcitxThemeSelections[themeName] {
-			marker = "[x]"
-		}
-		style := lipgloss.NewStyle().
-			Foreground(m.Styles.Foreground).
-			PaddingLeft(1)
+	if len(filtered) == 0 {
+		listContent.WriteString(m.Styles.WarningText.Render(m.t("custom.fcitx_theme.empty")))
+	} else {
+		start, end, _, _ := m.fcitxThemePageWindow(len(filtered))
+		for i := start; i < end; i++ {
+			themeName := filtered[i]
+			cursor := "  "
+			marker := "[ ]"
+			if m.FcitxThemeSelections[themeName] {
+				marker = "[x]"
+			}
+			style := lipgloss.NewStyle().
+				Foreground(m.Styles.Foreground).
+				PaddingLeft(1)
 
-		if m.FcitxThemeChoice == i {
-			cursor = "› "
-			style = m.Styles.SelectedMenuItem
-		}
+			if m.FcitxThemeChoice == i {
+				cursor = "› "
+				style = m.Styles.SelectedMenuItem
+			}
 
-		listContent.WriteString(style.Render(cursor+marker+" "+themeName) + "\n")
+			listContent.WriteString(style.Render(cursor+marker+" "+themeName) + "\n")
+		}
 	}
 
 	b.WriteString(m.renderPanel(strings.TrimSuffix(listContent.String(), "\n"), m.Styles.Secondary) + "\n\n")
 	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n\n")
-	b.WriteString(m.renderHintStrip(m.t("ui.hint.nav"), m.t("custom.fcitx_theme.hint.toggle"), m.t("custom.fcitx_theme.hint.next"), m.t("ui.hint.back")))
+	b.WriteString(m.Styles.Hint.Render(m.fcitxThemePageSummary(len(filtered))) + "\n\n")
+	b.WriteString(m.renderHintStrip(
+		m.t("custom.fcitx_theme.hint.nav"),
+		m.t("custom.fcitx_theme.hint.search"),
+		m.t("custom.fcitx_theme.hint.clear"),
+		m.t("custom.fcitx_theme.hint.toggle"),
+		m.t("custom.fcitx_theme.hint.next"),
+		m.t("ui.hint.back"),
+	))
 
 	return m.renderScreen(b.String())
 }
@@ -750,7 +864,9 @@ func (m Model) renderFcitxThemeDefaultList() string {
 	}
 
 	var listContent strings.Builder
-	for i, themeName := range selected {
+	start, end, _, _ := m.pagedListPageWindow(m.FcitxThemeDefaultChoice, len(selected))
+	for i := start; i < end; i++ {
+		themeName := selected[i]
 		cursor := "  "
 		style := lipgloss.NewStyle().
 			Foreground(m.Styles.Foreground).
@@ -766,6 +882,13 @@ func (m Model) renderFcitxThemeDefaultList() string {
 
 	b.WriteString(m.renderPanel(strings.TrimSuffix(listContent.String(), "\n"), m.Styles.Secondary) + "\n\n")
 	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n\n")
+	b.WriteString(m.Styles.Hint.Render(m.pagedListPageSummary(
+		m.FcitxThemeDefaultChoice,
+		len(selected),
+		len(selected),
+		"custom.fcitx_theme.page",
+		"custom.fcitx_theme.page_empty",
+	)) + "\n\n")
 	b.WriteString(m.Styles.Hint.Render(m.t("custom.fcitx_theme.default_hint")) + "\n\n")
 	b.WriteString(m.renderHintStrip(m.t("ui.hint.nav"), m.t("ui.hint.apply_theme"), m.t("ui.hint.back")))
 

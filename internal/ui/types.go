@@ -130,6 +130,7 @@ type Model struct {
 	ThemePatchDefaultKey    string
 	FcitxThemeChoice        int
 	FcitxThemeList          []string
+	FcitxThemeSearchQuery   string
 	FcitxThemeSelections    map[string]bool
 	FcitxThemeDefaultChoice int
 	FcitxThemeSelected      string
