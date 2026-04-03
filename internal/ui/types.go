@@ -30,6 +30,7 @@ const (
 	ViewThemePatchDefaultList
 	ViewThemePatchDeployPrompt
 	ViewFcitxThemeList
+	ViewFcitxThemeDefaultList
 	ViewFcitxThemeDeployPrompt
 	ViewEngineSelector // 引擎选择界面
 	ViewEnginePrompt   // 多引擎未配置提示对话框
@@ -123,11 +124,14 @@ type Model struct {
 	ThemeList               []string
 	CustomMenuChoice        int
 	ThemePatchChoice        int
+	ThemePatchSearchQuery   string
 	ThemePatchSelections    map[string]bool
 	ThemePatchDefaultChoice int
 	ThemePatchDefaultKey    string
 	FcitxThemeChoice        int
 	FcitxThemeList          []string
+	FcitxThemeSelections    map[string]bool
+	FcitxThemeDefaultChoice int
 	FcitxThemeSelected      string
 
 	// Engine selector UI state

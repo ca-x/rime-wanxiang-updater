@@ -69,6 +69,82 @@ func setFcitxThemeWithFallback(themeName, configPath string, dbusSetter func(str
 	return writeFcitxClassicUIConfig(configPath, themeName)
 }
 
+func readFcitxClassicUITheme(configPath string) (string, error) {
+	file, err := os.Open(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("open classicui config: %w", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "Theme=") {
+			continue
+		}
+		return strings.TrimSpace(strings.TrimPrefix(line, "Theme=")), nil
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("read classicui config: %w", err)
+	}
+
+	return "", nil
+}
+
+func installedFcitxThemeSelections(destRoot string, builtinThemeNames []string) (map[string]bool, error) {
+	selections := make(map[string]bool)
+	for _, themeName := range builtinThemeNames {
+		info, err := os.Stat(filepath.Join(destRoot, themeName))
+		if err == nil && info.IsDir() {
+			selections[themeName] = true
+			continue
+		}
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("stat installed theme %q: %w", themeName, err)
+		}
+	}
+
+	return selections, nil
+}
+
+func syncInstalledFcitxThemes(themeFS fs.FS, destRoot string, builtinThemeNames []string, selections map[string]bool) error {
+	for _, themeName := range builtinThemeNames {
+		targetDir := filepath.Join(destRoot, themeName)
+		if selections[themeName] {
+			if err := installFcitxTheme(themeFS, themeName, destRoot); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.RemoveAll(targetDir); err != nil {
+			return fmt.Errorf("remove theme dir %q: %w", targetDir, err)
+		}
+	}
+
+	return nil
+}
+
+func fcitxThemeRootPath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("get home dir: %w", err)
+	}
+
+	return filepath.Join(homeDir, ".local", "share", "fcitx5", "themes"), nil
+}
+
+func fcitxClassicUIConfigPath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("get home dir: %w", err)
+	}
+
+	return filepath.Join(homeDir, ".config", "fcitx5", "conf", "classicui.conf"), nil
+}
+
 func installFcitxTheme(themeFS fs.FS, themeName, destRoot string) error {
 	if themeFS == nil {
 		return fmt.Errorf("theme fs is nil")

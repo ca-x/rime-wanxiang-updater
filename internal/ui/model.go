@@ -118,6 +118,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleThemePatchDeployPromptInput(msg)
 		case ViewFcitxThemeList:
 			return m.handleFcitxThemeListInput(msg)
+		case ViewFcitxThemeDefaultList:
+			return m.handleFcitxThemeDefaultListInput(msg)
 		case ViewFcitxThemeDeployPrompt:
 			return m.handleFcitxThemeDeployPromptInput(msg)
 		case ViewEngineSelector:
@@ -190,6 +192,8 @@ func (m Model) View() string {
 		return m.renderThemePatchDeployPrompt()
 	case ViewFcitxThemeList:
 		return m.renderFcitxThemeList()
+	case ViewFcitxThemeDefaultList:
+		return m.renderFcitxThemeDefaultList()
 	case ViewFcitxThemeDeployPrompt:
 		return m.renderFcitxThemeDeployPrompt()
 	case ViewEngineSelector:

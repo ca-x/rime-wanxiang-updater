@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"rime-wanxiang-updater/internal/config"
 	"rime-wanxiang-updater/internal/deployer"
@@ -111,6 +112,48 @@ func writeThemePatchPresets(path string, definitions []themePatchDefinition) err
 	}
 	document["patch"] = patch
 
+	return writeThemePatchDocument(path, document)
+}
+
+func readThemePatchSelections(path string) (map[string]bool, error) {
+	document, err := readThemePatchDocument(path)
+	if err != nil {
+		return nil, err
+	}
+
+	patch := themePatchSection(document)
+	selections := make(map[string]bool)
+	for key := range patch {
+		if !strings.HasPrefix(key, "preset_color_schemes/") {
+			continue
+		}
+
+		themeKey := strings.TrimPrefix(key, "preset_color_schemes/")
+		if _, ok := themePatchDefinitionByKey(themeKey); ok {
+			selections[themeKey] = true
+		}
+	}
+
+	return selections, nil
+}
+
+func syncThemePatchPresets(path string, selections map[string]bool) error {
+	document, err := readThemePatchDocument(path)
+	if err != nil {
+		return err
+	}
+
+	patch := themePatchSection(document)
+	for _, definition := range themePatchDefinitions() {
+		key := "preset_color_schemes/" + definition.Key
+		if selections[definition.Key] {
+			patch[key] = definition.Values
+			continue
+		}
+		delete(patch, key)
+	}
+
+	document["patch"] = patch
 	return writeThemePatchDocument(path, document)
 }
 

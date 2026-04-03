@@ -5,9 +5,7 @@ package ui
 import (
 	"fmt"
 	"io/fs"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 
 	projectassets "rime-wanxiang-updater/assets"
@@ -57,17 +55,23 @@ func installAndSetFcitxTheme(themeName string) error {
 		return fmt.Errorf("fcitx5 themes are not embedded")
 	}
 
-	homeDir, err := os.UserHomeDir()
+	themeRoot, err := fcitxThemeRootPath()
 	if err != nil {
-		return fmt.Errorf("get home dir: %w", err)
+		return err
 	}
-
-	themeRoot := filepath.Join(homeDir, ".local", "share", "fcitx5", "themes")
 	if err := installFcitxTheme(themeFS, themeName, themeRoot); err != nil {
 		return err
 	}
 
-	configPath := filepath.Join(homeDir, ".config", "fcitx5", "conf", "classicui.conf")
+	return applyFcitxThemeDefault(themeName)
+}
+
+func applyFcitxThemeDefault(themeName string) error {
+	configPath, err := fcitxClassicUIConfigPath()
+	if err != nil {
+		return err
+	}
+
 	return setFcitxThemeWithFallback(themeName, configPath, setFcitxThemeViaDBus)
 }
 

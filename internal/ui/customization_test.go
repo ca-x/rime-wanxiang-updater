@@ -3,9 +3,11 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"rime-wanxiang-updater/internal/config"
+	"rime-wanxiang-updater/internal/theme"
 	"rime-wanxiang-updater/internal/types"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -173,6 +175,79 @@ func TestWriteThemePatchDefaultUpdatesStyleOnly(t *testing.T) {
 	}
 }
 
+func TestReadThemePatchSelectionsLoadsExistingBuiltinThemes(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "squirrel.custom.yaml")
+	content := []byte(`patch:
+  preset_color_schemes/jianchun:
+    name: 简纯
+  preset_color_schemes/custom_theme:
+    name: 自定义
+`)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	selections, err := readThemePatchSelections(path)
+	if err != nil {
+		t.Fatalf("readThemePatchSelections() error = %v", err)
+	}
+
+	if !selections["jianchun"] {
+		t.Fatalf("expected builtin theme to be selected: %#v", selections)
+	}
+	if selections["custom_theme"] {
+		t.Fatalf("non-builtin theme should not be selected: %#v", selections)
+	}
+}
+
+func TestSyncThemePatchPresetsRemovesUnselectedBuiltinThemesAndKeepsCustom(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "weasel.custom.yaml")
+	content := []byte(`patch:
+  preset_color_schemes/jianchun:
+    name: 简纯
+  preset_color_schemes/wechat:
+    name: 微信
+  preset_color_schemes/custom_theme:
+    name: 自定义
+`)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if err := syncThemePatchPresets(path, map[string]bool{
+		"wechat": true,
+	}); err != nil {
+		t.Fatalf("syncThemePatchPresets() error = %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	var doc map[string]any
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("yaml.Unmarshal() error = %v", err)
+	}
+
+	patch, ok := normalizeStringMap(doc["patch"])
+	if !ok {
+		t.Fatalf("patch section missing or invalid: %#v", doc["patch"])
+	}
+
+	if _, ok := patch["preset_color_schemes/jianchun"]; ok {
+		t.Fatalf("unselected builtin theme should be removed: %#v", patch["preset_color_schemes/jianchun"])
+	}
+	if _, ok := normalizeStringMap(patch["preset_color_schemes/wechat"]); !ok {
+		t.Fatalf("selected builtin theme should remain: %#v", patch["preset_color_schemes/wechat"])
+	}
+	if _, ok := normalizeStringMap(patch["preset_color_schemes/custom_theme"]); !ok {
+		t.Fatalf("custom theme should be preserved: %#v", patch["preset_color_schemes/custom_theme"])
+	}
+}
+
 func TestHandleThemePatchDeployPromptInput(t *testing.T) {
 	oldDeploy := deployThemePatch
 	defer func() { deployThemePatch = oldDeploy }()
@@ -206,5 +281,97 @@ func TestHandleThemePatchDeployPromptInput(t *testing.T) {
 	}
 	if !called {
 		t.Fatalf("deployThemePatch should run on enter")
+	}
+}
+
+func TestHandleThemePatchListInputFiltersResultsAndEscClearsSearch(t *testing.T) {
+	m := newThemePatchTestModel(t)
+	m.InitThemePatchListView()
+
+	next, _ := m.handleThemePatchListInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+	got := next.(Model)
+	if got.ThemePatchSearchQuery != "w" {
+		t.Fatalf("ThemePatchSearchQuery = %q, want %q", got.ThemePatchSearchQuery, "w")
+	}
+	if len(got.themePatchFilteredDefinitions()) == 0 {
+		t.Fatalf("themePatchFilteredDefinitions() should not be empty after search")
+	}
+
+	next, _ = got.handleThemePatchListInput(tea.KeyMsg{Type: tea.KeyEsc})
+	got = next.(Model)
+	if got.State != ViewThemePatchList {
+		t.Fatalf("handleThemePatchListInput(esc with search) state = %v, want %v", got.State, ViewThemePatchList)
+	}
+	if got.ThemePatchSearchQuery != "" {
+		t.Fatalf("ThemePatchSearchQuery after esc = %q, want empty", got.ThemePatchSearchQuery)
+	}
+}
+
+func TestHandleThemePatchListInputSpaceSelectsFilteredTheme(t *testing.T) {
+	m := newThemePatchTestModel(t)
+	m.InitThemePatchListView()
+	m.ThemePatchSearchQuery = "lumk"
+	m.syncThemePatchFilterState()
+
+	next, _ := m.handleThemePatchListInput(tea.KeyMsg{Type: tea.KeySpace})
+	got := next.(Model)
+
+	if !got.ThemePatchSelections["Lumk_light"] {
+		t.Fatalf("ThemePatchSelections should contain filtered key %q: %#v", "Lumk_light", got.ThemePatchSelections)
+	}
+	if got.ThemePatchSelections["jianchun"] {
+		t.Fatalf("ThemePatchSelections should not contain unfiltered first key: %#v", got.ThemePatchSelections)
+	}
+}
+
+func TestHandleThemePatchListInputClampsChoiceAfterFiltering(t *testing.T) {
+	m := newThemePatchTestModel(t)
+	m.InitThemePatchListView()
+	m.ThemePatchChoice = len(themePatchDefinitions()) - 1
+	m.ThemePatchSearchQuery = "jianchun"
+	m.syncThemePatchFilterState()
+
+	if m.ThemePatchChoice != 0 {
+		t.Fatalf("ThemePatchChoice after filtering = %d, want 0", m.ThemePatchChoice)
+	}
+}
+
+func TestRenderThemePatchListShowsOnlyCurrentPage(t *testing.T) {
+	m := newThemePatchTestModel(t)
+	m.InitThemePatchListView()
+	m.Width = 80
+	m.Height = 18
+
+	rendered := m.renderThemePatchList()
+
+	if !strings.Contains(rendered, "简纯") {
+		t.Fatalf("renderThemePatchList() should include first page item: %q", rendered)
+	}
+	if strings.Contains(rendered, "高仿暗色 macOS 14") {
+		t.Fatalf("renderThemePatchList() should not include items outside current page: %q", rendered)
+	}
+	if !strings.Contains(rendered, "第 1/") {
+		t.Fatalf("renderThemePatchList() should include pagination summary: %q", rendered)
+	}
+}
+
+func newThemePatchTestModel(t *testing.T) Model {
+	t.Helper()
+
+	themeMgr := theme.NewManager()
+	if err := themeMgr.SetTheme("one-dark"); err != nil {
+		t.Fatalf("SetTheme() error = %v", err)
+	}
+
+	return Model{
+		State:        ViewThemePatchList,
+		ThemeManager: themeMgr,
+		Styles:       DefaultStyles(themeMgr),
+		Cfg: &config.Manager{
+			Config: &types.Config{
+				Language:         "zh-CN",
+				InstalledEngines: []string{},
+			},
+		},
 	}
 }

@@ -1,11 +1,17 @@
 package ui
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"rime-wanxiang-updater/internal/config"
+	"rime-wanxiang-updater/internal/types"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestFcitxThemeSupportedForPlatform(t *testing.T) {
@@ -148,6 +154,194 @@ func TestSetFcitxThemePrefersDBusAndFallsBackToConfig(t *testing.T) {
 			t.Fatalf("config fallback did not write theme: %q", string(data))
 		}
 	})
+}
+
+func TestInstalledFcitxThemeSelectionsLoadsExistingBuiltinThemes(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"demo", "other", "third-party"} {
+		if err := os.MkdirAll(filepath.Join(root, name), 0755); err != nil {
+			t.Fatalf("MkdirAll(%q) error = %v", name, err)
+		}
+	}
+
+	selections, err := installedFcitxThemeSelections(root, []string{"demo", "other", "missing"})
+	if err != nil {
+		t.Fatalf("installedFcitxThemeSelections() error = %v", err)
+	}
+
+	if !selections["demo"] || !selections["other"] {
+		t.Fatalf("existing builtin themes should be selected: %#v", selections)
+	}
+	if selections["missing"] {
+		t.Fatalf("missing builtin theme should not be selected: %#v", selections)
+	}
+	if selections["third-party"] {
+		t.Fatalf("non-builtin theme should not be selected: %#v", selections)
+	}
+}
+
+func TestSyncInstalledFcitxThemesCopiesSelectedRemovesUnselectedBuiltinAndKeepsCustom(t *testing.T) {
+	source := fstest.MapFS{
+		"demo/theme.conf":  &fstest.MapFile{Data: []byte("Theme=demo\n")},
+		"other/theme.conf": &fstest.MapFile{Data: []byte("Theme=other\n")},
+	}
+	destRoot := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(destRoot, "demo"), 0755); err != nil {
+		t.Fatalf("MkdirAll(demo) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(destRoot, "third-party"), 0755); err != nil {
+		t.Fatalf("MkdirAll(third-party) error = %v", err)
+	}
+
+	if err := syncInstalledFcitxThemes(source, destRoot, []string{"demo", "other"}, map[string]bool{
+		"other": true,
+	}); err != nil {
+		t.Fatalf("syncInstalledFcitxThemes() error = %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(destRoot, "demo")); !os.IsNotExist(err) {
+		t.Fatalf("unselected builtin theme directory should be removed")
+	}
+	if _, err := os.Stat(filepath.Join(destRoot, "other", "theme.conf")); err != nil {
+		t.Fatalf("selected builtin theme should be copied: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(destRoot, "third-party")); err != nil {
+		t.Fatalf("custom theme directory should be preserved: %v", err)
+	}
+}
+
+func TestOpenFcitxThemeListPreselectsInstalledThemes(t *testing.T) {
+	oldList := listAvailableFcitxThemes
+	oldSelections := loadInstalledFcitxThemeSelections
+	defer func() {
+		listAvailableFcitxThemes = oldList
+		loadInstalledFcitxThemeSelections = oldSelections
+	}()
+
+	listAvailableFcitxThemes = func() ([]string, error) {
+		return []string{"demo", "other"}, nil
+	}
+	loadInstalledFcitxThemeSelections = func([]string) (map[string]bool, error) {
+		return map[string]bool{"other": true}, nil
+	}
+
+	m := Model{
+		Cfg: &config.Manager{
+			Config: &types.Config{
+				Language:         "zh-CN",
+				InstalledEngines: []string{"fcitx5"},
+			},
+		},
+	}
+
+	next, _ := m.openFcitxThemeList()
+	got := next.(Model)
+
+	if got.State != ViewFcitxThemeList {
+		t.Fatalf("openFcitxThemeList() state = %v, want %v", got.State, ViewFcitxThemeList)
+	}
+	if !got.FcitxThemeSelections["other"] {
+		t.Fatalf("existing theme should be preselected: %#v", got.FcitxThemeSelections)
+	}
+	if got.FcitxThemeSelections["demo"] {
+		t.Fatalf("non-existing theme should not be preselected: %#v", got.FcitxThemeSelections)
+	}
+}
+
+func TestApplyFcitxThemeChoiceSyncsSelectionAndMovesToDefaultList(t *testing.T) {
+	oldSync := syncInstalledFcitxThemeSelections
+	defer func() { syncInstalledFcitxThemeSelections = oldSync }()
+
+	called := false
+	syncInstalledFcitxThemeSelections = func(themeNames []string, selections map[string]bool) error {
+		called = true
+		if !selections["other"] {
+			t.Fatalf("selection should include existing checked theme: %#v", selections)
+		}
+		if !selections["demo"] {
+			t.Fatalf("selection should include newly checked theme: %#v", selections)
+		}
+		return nil
+	}
+
+	m := Model{
+		State:                ViewFcitxThemeList,
+		FcitxThemeList:       []string{"demo", "other"},
+		FcitxThemeChoice:     0,
+		FcitxThemeSelections: map[string]bool{"other": true},
+	}
+
+	next, _ := m.handleFcitxThemeListInput(tea.KeyMsg{Type: tea.KeySpace})
+	got := next.(Model)
+	next, _ = got.handleFcitxThemeListInput(tea.KeyMsg{Type: tea.KeyEnter})
+	got = next.(Model)
+
+	if !called {
+		t.Fatalf("syncInstalledFcitxThemeSelections should be called")
+	}
+	if got.State != ViewFcitxThemeDefaultList {
+		t.Fatalf("state after syncing fcitx themes = %v, want %v", got.State, ViewFcitxThemeDefaultList)
+	}
+}
+
+func TestApplyFcitxThemeDefaultChoiceSetsSelectedTheme(t *testing.T) {
+	oldSet := setFcitxThemeDefault
+	defer func() { setFcitxThemeDefault = oldSet }()
+
+	calledWith := ""
+	setFcitxThemeDefault = func(themeName string) error {
+		calledWith = themeName
+		return nil
+	}
+
+	m := Model{
+		State:                   ViewFcitxThemeDefaultList,
+		FcitxThemeChoice:        1,
+		FcitxThemeDefaultChoice: 1,
+		FcitxThemeList:          []string{"demo", "other"},
+		FcitxThemeSelections:    map[string]bool{"demo": true, "other": true},
+	}
+
+	next, _ := m.applyFcitxThemeDefaultChoice()
+	got := next.(Model)
+
+	if calledWith != "other" {
+		t.Fatalf("setFcitxThemeDefault() called with %q, want %q", calledWith, "other")
+	}
+	if got.FcitxThemeSelected != "other" {
+		t.Fatalf("FcitxThemeSelected = %q, want %q", got.FcitxThemeSelected, "other")
+	}
+	if got.State != ViewFcitxThemeDeployPrompt {
+		t.Fatalf("state after applying default = %v, want %v", got.State, ViewFcitxThemeDeployPrompt)
+	}
+}
+
+func TestApplyFcitxThemeChoiceReportsSyncError(t *testing.T) {
+	oldSync := syncInstalledFcitxThemeSelections
+	defer func() { syncInstalledFcitxThemeSelections = oldSync }()
+
+	syncInstalledFcitxThemeSelections = func(themeNames []string, selections map[string]bool) error {
+		return errors.New("boom")
+	}
+
+	m := Model{
+		State:                ViewFcitxThemeList,
+		FcitxThemeList:       []string{"demo"},
+		FcitxThemeSelections: map[string]bool{"demo": true},
+		Cfg: &config.Manager{
+			Config: &types.Config{
+				Language: "zh-CN",
+			},
+		},
+	}
+
+	next, _ := m.applyFcitxThemeChoice()
+	got := next.(Model)
+
+	if got.State != ViewResult {
+		t.Fatalf("state after sync error = %v, want %v", got.State, ViewResult)
+	}
 }
 
 func containsLine(content, line string) bool {
