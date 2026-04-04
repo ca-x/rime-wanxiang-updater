@@ -870,7 +870,7 @@ func (m Model) applyFcitxThemeDefaultChoice() (tea.Model, tea.Cmd) {
 	cfg := FcitxThemeConfig{
 		Theme:                m.FcitxThemeLightSelected,
 		DarkTheme:            themeName,
-		UseDarkTheme:         m.FcitxThemeCurrent.UseDarkTheme,
+		UseDarkTheme:         boolPtr(true),
 		FollowSystemDarkMode: boolPtr(true),
 	}
 	if err := setFcitxThemeDefault(cfg); err != nil {
@@ -990,7 +990,11 @@ func (m Model) renderFcitxThemeDeployPrompt() string {
 
 	b.WriteString(m.renderHeaderBlock())
 	b.WriteString(m.renderTitle("◆ "+m.t("custom.fcitx_theme.deploy_title")+" ◆") + "\n\n")
-	b.WriteString(m.renderPanel(m.t("custom.fcitx_theme.deploy_body", m.FcitxThemeLightSelected, m.FcitxThemeDarkSelected), m.Styles.Secondary) + "\n\n")
+	b.WriteString(m.renderSummaryCard([][2]string{
+		{m.t("custom.fcitx_theme.selected_light"), fcitxThemeNameOrUnset(m, m.FcitxThemeLightSelected)},
+		{m.t("custom.fcitx_theme.selected_dark"), fcitxThemeNameOrUnset(m, m.FcitxThemeDarkSelected)},
+	}) + "\n\n")
+	b.WriteString(m.renderPanel(m.t("custom.fcitx_theme.deploy_body"), m.Styles.Secondary) + "\n\n")
 	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n\n")
 	b.WriteString(m.renderHintStrip(m.t("custom.fcitx_theme.hint.deploy"), m.t("custom.fcitx_theme.hint.return")))
 

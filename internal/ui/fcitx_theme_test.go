@@ -438,6 +438,64 @@ func TestApplyFcitxThemeDefaultChoiceSetsLightAndDarkThemes(t *testing.T) {
 	}
 }
 
+func TestApplyFcitxThemeDefaultChoiceEnablesDarkThemeWhenCurrentConfigDisabled(t *testing.T) {
+	oldSet := setFcitxThemeDefault
+	defer func() { setFcitxThemeDefault = oldSet }()
+
+	calledWith := FcitxThemeConfig{}
+	setFcitxThemeDefault = func(cfg FcitxThemeConfig) error {
+		calledWith = cfg
+		return nil
+	}
+
+	for _, tc := range []struct {
+		name           string
+		currentConfig  FcitxThemeConfig
+	}{
+		{
+			name: "false",
+			currentConfig: FcitxThemeConfig{
+				UseDarkTheme: boolPtr(false),
+			},
+		},
+		{
+			name:          "unset",
+			currentConfig: FcitxThemeConfig{},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calledWith = FcitxThemeConfig{}
+
+			m := Model{
+				State:                   ViewFcitxThemeDefaultList,
+				FcitxThemeChoice:        0,
+				FcitxThemeDefaultChoice: 0,
+				FcitxThemeDefaultKey:    fcitxThemeSelectionDark,
+				FcitxThemeLightSelected: "light-theme",
+				FcitxThemeList:          []string{"dark-theme"},
+				FcitxThemeSelections:    map[string]bool{"dark-theme": true},
+				FcitxThemeCurrent:       tc.currentConfig,
+			}
+
+			next, _ := m.applyFcitxThemeDefaultChoice()
+			got := next.(Model)
+
+			if calledWith.UseDarkTheme == nil || !*calledWith.UseDarkTheme {
+				t.Fatalf("UseDarkTheme = %#v, want true", calledWith.UseDarkTheme)
+			}
+			if calledWith.Theme != "light-theme" {
+				t.Fatalf("Theme = %q, want %q", calledWith.Theme, "light-theme")
+			}
+			if calledWith.DarkTheme != "dark-theme" {
+				t.Fatalf("DarkTheme = %q, want %q", calledWith.DarkTheme, "dark-theme")
+			}
+			if got.State != ViewFcitxThemeDeployPrompt {
+				t.Fatalf("state after applying default = %v, want %v", got.State, ViewFcitxThemeDeployPrompt)
+			}
+		})
+	}
+}
+
 func TestApplyFcitxThemeChoiceReportsSyncError(t *testing.T) {
 	oldSync := syncInstalledFcitxThemeSelections
 	defer func() { syncInstalledFcitxThemeSelections = oldSync }()
@@ -463,6 +521,95 @@ func TestApplyFcitxThemeChoiceReportsSyncError(t *testing.T) {
 	if got.State != ViewResult {
 		t.Fatalf("state after sync error = %v, want %v", got.State, ViewResult)
 	}
+}
+
+func TestReloadFcitxThemePrefersClassicUIAddonReload(t *testing.T) {
+	cfg := &types.Config{}
+
+	t.Run("addon reload success skips fallback", func(t *testing.T) {
+		addonCalled := false
+		remoteCalled := false
+		deployCalled := false
+
+		err := reloadFcitxTheme(
+			cfg,
+			func() error {
+				addonCalled = true
+				return nil
+			},
+			func() error {
+				remoteCalled = true
+				return nil
+			},
+			func(*types.Config) error {
+				deployCalled = true
+				return nil
+			},
+		)
+		if err != nil {
+			t.Fatalf("reloadFcitxTheme() error = %v", err)
+		}
+		if !addonCalled {
+			t.Fatalf("addon reloader should be called")
+		}
+		if remoteCalled {
+			t.Fatalf("remote reload should not run when addon reload succeeds")
+		}
+		if deployCalled {
+			t.Fatalf("deployer fallback should not run when addon reload succeeds")
+		}
+	})
+
+	t.Run("remote reload is second fallback", func(t *testing.T) {
+		addonCalled := false
+		remoteCalled := false
+		deployCalled := false
+
+		err := reloadFcitxTheme(
+			cfg,
+			func() error {
+				addonCalled = true
+				return errors.New("addon reload failed")
+			},
+			func() error {
+				remoteCalled = true
+				return nil
+			},
+			func(*types.Config) error {
+				deployCalled = true
+				return nil
+			},
+		)
+		if err != nil {
+			t.Fatalf("reloadFcitxTheme() error = %v", err)
+		}
+		if !addonCalled || !remoteCalled {
+			t.Fatalf("expected addon and remote reloaders to run")
+		}
+		if deployCalled {
+			t.Fatalf("deployer fallback should not run when remote reload succeeds")
+		}
+	})
+
+	t.Run("deployer is final fallback", func(t *testing.T) {
+		deployCalled := false
+
+		err := reloadFcitxTheme(
+			cfg,
+			func() error { return errors.New("addon reload failed") },
+			func() error { return errors.New("remote reload failed") },
+			func(*types.Config) error {
+				deployCalled = true
+				return nil
+			},
+		)
+		if err != nil {
+			t.Fatalf("reloadFcitxTheme() error = %v", err)
+		}
+		if !deployCalled {
+			t.Fatalf("deployer fallback should run after reload failures")
+		}
+	})
 }
 
 func TestHandleFcitxThemeListInputFiltersResultsAndEscClearsSearch(t *testing.T) {
@@ -546,6 +693,30 @@ func TestRenderFcitxThemeDefaultListShowsOnlyCurrentPage(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "第 1/") {
 		t.Fatalf("renderFcitxThemeDefaultList() should include pagination summary: %q", rendered)
+	}
+}
+
+func TestRenderFcitxThemeDeployPromptShowsLightAndDarkThemesOnSeparateLines(t *testing.T) {
+	m := newFcitxThemeTestModel(t)
+	m.State = ViewFcitxThemeDeployPrompt
+	m.Width = 80
+	m.Height = 20
+	m.FcitxThemeLightSelected = "inflex-youlan"
+	m.FcitxThemeDarkSelected = "inflex-youlan-dark"
+
+	rendered := m.renderFcitxThemeDeployPrompt()
+
+	if !strings.Contains(rendered, "已选浅色") {
+		t.Fatalf("renderFcitxThemeDeployPrompt() should include light theme label: %q", rendered)
+	}
+	if !strings.Contains(rendered, "已选深色") {
+		t.Fatalf("renderFcitxThemeDeployPrompt() should include dark theme label: %q", rendered)
+	}
+	if !strings.Contains(rendered, "inflex-youlan") {
+		t.Fatalf("renderFcitxThemeDeployPrompt() should include selected light theme: %q", rendered)
+	}
+	if !strings.Contains(rendered, "inflex-youlan-dark") {
+		t.Fatalf("renderFcitxThemeDeployPrompt() should include selected dark theme: %q", rendered)
 	}
 }
 

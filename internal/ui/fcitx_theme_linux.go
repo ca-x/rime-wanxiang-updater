@@ -17,11 +17,34 @@ import (
 )
 
 var deployFcitxTheme = func(cfg *types.Config) error {
-	restart := exec.Command("fcitx5-remote", "-r")
-	if err := restart.Run(); err == nil {
+	return reloadFcitxTheme(cfg, reloadFcitxClassicUIAddonConfig, reloadFcitxRemoteConfig, func(cfg *types.Config) error {
+		return deployer.GetDeployer(cfg).Deploy()
+	})
+}
+
+func reloadFcitxTheme(
+	cfg *types.Config,
+	addonReloader func() error,
+	remoteReloader func() error,
+	deployFallback func(*types.Config) error,
+) error {
+	if addonReloader == nil {
+		return fmt.Errorf("addon reloader is nil")
+	}
+	if remoteReloader == nil {
+		return fmt.Errorf("remote reloader is nil")
+	}
+	if deployFallback == nil {
+		return fmt.Errorf("deploy fallback is nil")
+	}
+
+	if err := addonReloader(); err == nil {
 		return nil
 	}
-	return deployer.GetDeployer(cfg).Deploy()
+	if err := remoteReloader(); err == nil {
+		return nil
+	}
+	return deployFallback(cfg)
 }
 
 func availableFcitxThemes() ([]string, error) {
@@ -143,4 +166,32 @@ func getFcitxThemeConfigViaDBus() (FcitxThemeConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+func reloadFcitxClassicUIAddonConfig() error {
+	conn, err := dbus.ConnectSessionBus()
+	if err != nil {
+		return fmt.Errorf("connect dbus: %w", err)
+	}
+	defer conn.Close()
+
+	obj := conn.Object("org.fcitx.Fcitx5", "/controller")
+	call := obj.Call(
+		"org.fcitx.Fcitx.Controller1.ReloadAddonConfig",
+		0,
+		"classicui",
+	)
+	if call.Err != nil {
+		return fmt.Errorf("reload classicui addon config via dbus: %w", call.Err)
+	}
+
+	return nil
+}
+
+func reloadFcitxRemoteConfig() error {
+	restart := exec.Command("fcitx5-remote", "-r")
+	if err := restart.Run(); err != nil {
+		return fmt.Errorf("reload fcitx config via fcitx5-remote: %w", err)
+	}
+	return nil
 }
