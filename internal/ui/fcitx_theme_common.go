@@ -11,17 +11,69 @@ import (
 	"strings"
 )
 
+const (
+	fcitxThemeSelectionLight = "light"
+	fcitxThemeSelectionDark  = "dark"
+)
+
+type FcitxThemeConfig struct {
+	Theme                string `json:"Theme,omitempty"`
+	DarkTheme            string `json:"DarkTheme,omitempty"`
+	UseDarkTheme         *bool  `json:"UseDarkTheme,omitempty"`
+	FollowSystemDarkMode *bool  `json:"FollowSystemDarkMode,omitempty"`
+}
+
 func fcitxThemeSupportedForPlatform(platform string, installedEngines []string) bool {
 	return platform == "linux" && slices.Contains(installedEngines, "fcitx5")
 }
 
-func writeFcitxClassicUIConfig(configPath, themeName string) error {
+func boolPtr(value bool) *bool {
+	return &value
+}
+
+func boolToFcitxString(value bool) string {
+	if value {
+		return "True"
+	}
+	return "False"
+}
+
+func parseFcitxBool(raw string) (*bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "true", "1", "yes", "on":
+		return boolPtr(true), true
+	case "false", "0", "no", "off":
+		return boolPtr(false), true
+	default:
+		return nil, false
+	}
+}
+
+func (cfg FcitxThemeConfig) values() map[string]string {
+	values := make(map[string]string)
+	if cfg.Theme != "" {
+		values["Theme"] = cfg.Theme
+	}
+	if cfg.DarkTheme != "" {
+		values["DarkTheme"] = cfg.DarkTheme
+	}
+	if cfg.UseDarkTheme != nil {
+		values["UseDarkTheme"] = boolToFcitxString(*cfg.UseDarkTheme)
+	}
+	if cfg.FollowSystemDarkMode != nil {
+		values["FollowSystemDarkMode"] = boolToFcitxString(*cfg.FollowSystemDarkMode)
+	}
+	return values
+}
+
+func writeFcitxClassicUIConfig(configPath string, cfg FcitxThemeConfig) error {
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 		return fmt.Errorf("create classicui config dir: %w", err)
 	}
 
+	updates := cfg.values()
 	var lines []string
-	found := false
+	found := make(map[string]bool)
 
 	file, err := os.Open(configPath)
 	if err == nil {
@@ -29,10 +81,14 @@ func writeFcitxClassicUIConfig(configPath, themeName string) error {
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			line := scanner.Text()
-			if strings.HasPrefix(line, "Theme=") {
-				lines = append(lines, "Theme="+themeName)
-				found = true
-				continue
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				if value, ok := updates[key]; ok {
+					lines = append(lines, key+"="+value)
+					found[key] = true
+					continue
+				}
 			}
 			lines = append(lines, line)
 		}
@@ -43,8 +99,11 @@ func writeFcitxClassicUIConfig(configPath, themeName string) error {
 		return fmt.Errorf("open classicui config: %w", err)
 	}
 
-	if !found {
-		lines = append(lines, "Theme="+themeName)
+	for key, value := range updates {
+		if found[key] {
+			continue
+		}
+		lines = append(lines, key+"="+value)
 	}
 
 	content := strings.Join(lines, "\n")
@@ -59,39 +118,79 @@ func writeFcitxClassicUIConfig(configPath, themeName string) error {
 	return nil
 }
 
-func setFcitxThemeWithFallback(themeName, configPath string, dbusSetter func(string) error) error {
+func setFcitxThemeWithFallback(cfg FcitxThemeConfig, configPath string, dbusSetter func(FcitxThemeConfig) error) error {
 	if dbusSetter == nil {
 		return fmt.Errorf("dbus setter is nil")
 	}
-	if err := dbusSetter(themeName); err == nil {
+	if err := dbusSetter(cfg); err == nil {
 		return nil
 	}
-	return writeFcitxClassicUIConfig(configPath, themeName)
+	return writeFcitxClassicUIConfig(configPath, cfg)
 }
 
-func readFcitxClassicUITheme(configPath string) (string, error) {
+func readFcitxClassicUIConfig(configPath string) (FcitxThemeConfig, error) {
+	var cfg FcitxThemeConfig
+
 	file, err := os.Open(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", nil
+			return cfg, nil
 		}
-		return "", fmt.Errorf("open classicui config: %w", err)
+		return cfg, fmt.Errorf("open classicui config: %w", err)
 	}
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "Theme=") {
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
 			continue
 		}
-		return strings.TrimSpace(strings.TrimPrefix(line, "Theme=")), nil
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		switch key {
+		case "Theme":
+			cfg.Theme = value
+		case "DarkTheme":
+			cfg.DarkTheme = value
+		case "UseDarkTheme":
+			if parsed, ok := parseFcitxBool(value); ok {
+				cfg.UseDarkTheme = parsed
+			}
+		case "FollowSystemDarkMode":
+			if parsed, ok := parseFcitxBool(value); ok {
+				cfg.FollowSystemDarkMode = parsed
+			}
+		}
 	}
 	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("read classicui config: %w", err)
+		return cfg, fmt.Errorf("read classicui config: %w", err)
 	}
 
-	return "", nil
+	return cfg, nil
+}
+
+func readFcitxThemeConfigWithFallback(configPath string, dbusGetter func() (FcitxThemeConfig, error)) (FcitxThemeConfig, error) {
+	if dbusGetter == nil {
+		return readFcitxClassicUIConfig(configPath)
+	}
+
+	cfg, err := dbusGetter()
+	if err == nil {
+		return cfg, nil
+	}
+
+	return readFcitxClassicUIConfig(configPath)
+}
+
+func readFcitxClassicUITheme(configPath string) (string, error) {
+	cfg, err := readFcitxClassicUIConfig(configPath)
+	if err != nil {
+		return "", err
+	}
+	return cfg.Theme, nil
 }
 
 func installedFcitxThemeSelections(destRoot string, builtinThemeNames []string) (map[string]bool, error) {

@@ -168,9 +168,10 @@ chmod +x rime-wanxiang-updater
 
 你只需要：
 
-1. 选择一个内置主题
-2. 让程序自动安装并设置它
-3. 按提示决定是否立即重载 `fcitx5`
+1. 先多选需要保留的内置主题
+2. 分别选择浅色模式和深色模式下的 Fcitx5 主题
+3. 让程序自动写入 `Theme` / `DarkTheme` 并启用跟随系统深色模式
+4. 按提示决定是否立即重载 `fcitx5`
 
 主题会安装到 `~/.local/share/fcitx5/themes/`。
 

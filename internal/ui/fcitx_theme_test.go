@@ -55,12 +55,19 @@ func TestWriteFcitxClassicUIConfigPreservesOtherLines(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "classicui.conf")
 
-	initial := "[Groups/0]\nName=ClassicUI\nTheme=old-theme\nVertical Candidate List=False\n"
+	initial := "[Groups/0]\nName=ClassicUI\nTheme=old-theme\nUseDarkTheme=False\nVertical Candidate List=False\n"
 	if err := os.WriteFile(path, []byte(initial), 0644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	if err := writeFcitxClassicUIConfig(path, "new-theme"); err != nil {
+	useDarkTheme := true
+	followSystemDarkMode := true
+	if err := writeFcitxClassicUIConfig(path, FcitxThemeConfig{
+		Theme:                "new-theme",
+		DarkTheme:            "new-theme-dark",
+		UseDarkTheme:         &useDarkTheme,
+		FollowSystemDarkMode: &followSystemDarkMode,
+	}); err != nil {
 		t.Fatalf("writeFcitxClassicUIConfig() error = %v", err)
 	}
 
@@ -73,11 +80,48 @@ func TestWriteFcitxClassicUIConfigPreservesOtherLines(t *testing.T) {
 	for _, want := range []string{
 		"Name=ClassicUI",
 		"Theme=new-theme",
+		"DarkTheme=new-theme-dark",
+		"UseDarkTheme=True",
+		"FollowSystemDarkMode=True",
 		"Vertical Candidate List=False",
 	} {
 		if !containsLine(content, want) {
 			t.Fatalf("classicui.conf missing line %q in %q", want, content)
 		}
+	}
+}
+
+func TestReadFcitxClassicUIConfigParsesThemeVariants(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "classicui.conf")
+
+	content := strings.Join([]string{
+		"[Groups/0]",
+		"Theme=latte",
+		"DarkTheme=mocha",
+		"UseDarkTheme=True",
+		"FollowSystemDarkMode=False",
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	cfg, err := readFcitxClassicUIConfig(path)
+	if err != nil {
+		t.Fatalf("readFcitxClassicUIConfig() error = %v", err)
+	}
+
+	if cfg.Theme != "latte" {
+		t.Fatalf("Theme = %q, want %q", cfg.Theme, "latte")
+	}
+	if cfg.DarkTheme != "mocha" {
+		t.Fatalf("DarkTheme = %q, want %q", cfg.DarkTheme, "mocha")
+	}
+	if cfg.UseDarkTheme == nil || !*cfg.UseDarkTheme {
+		t.Fatalf("UseDarkTheme = %#v, want true", cfg.UseDarkTheme)
+	}
+	if cfg.FollowSystemDarkMode == nil || *cfg.FollowSystemDarkMode {
+		t.Fatalf("FollowSystemDarkMode = %#v, want false", cfg.FollowSystemDarkMode)
 	}
 }
 
@@ -119,10 +163,16 @@ func TestSetFcitxThemePrefersDBusAndFallsBackToConfig(t *testing.T) {
 		configPath := filepath.Join(t.TempDir(), "classicui.conf")
 		called := false
 
-		err := setFcitxThemeWithFallback("demo", configPath, func(themeName string) error {
+		err := setFcitxThemeWithFallback(FcitxThemeConfig{
+			Theme:     "demo",
+			DarkTheme: "demo-dark",
+		}, configPath, func(cfg FcitxThemeConfig) error {
 			called = true
-			if themeName != "demo" {
-				t.Fatalf("themeName = %q, want %q", themeName, "demo")
+			if cfg.Theme != "demo" {
+				t.Fatalf("Theme = %q, want %q", cfg.Theme, "demo")
+			}
+			if cfg.DarkTheme != "demo-dark" {
+				t.Fatalf("DarkTheme = %q, want %q", cfg.DarkTheme, "demo-dark")
 			}
 			return nil
 		})
@@ -140,7 +190,12 @@ func TestSetFcitxThemePrefersDBusAndFallsBackToConfig(t *testing.T) {
 	t.Run("dbus failure falls back to config", func(t *testing.T) {
 		configPath := filepath.Join(t.TempDir(), "classicui.conf")
 
-		err := setFcitxThemeWithFallback("fallback-theme", configPath, func(string) error {
+		followSystemDarkMode := true
+		err := setFcitxThemeWithFallback(FcitxThemeConfig{
+			Theme:                "fallback-theme",
+			DarkTheme:            "fallback-dark",
+			FollowSystemDarkMode: &followSystemDarkMode,
+		}, configPath, func(FcitxThemeConfig) error {
 			return os.ErrPermission
 		})
 		if err != nil {
@@ -153,6 +208,12 @@ func TestSetFcitxThemePrefersDBusAndFallsBackToConfig(t *testing.T) {
 		}
 		if !containsLine(string(data), "Theme=fallback-theme") {
 			t.Fatalf("config fallback did not write theme: %q", string(data))
+		}
+		if !containsLine(string(data), "DarkTheme=fallback-dark") {
+			t.Fatalf("config fallback did not write dark theme: %q", string(data))
+		}
+		if !containsLine(string(data), "FollowSystemDarkMode=True") {
+			t.Fatalf("config fallback did not write dark mode behavior: %q", string(data))
 		}
 	})
 }
@@ -215,9 +276,11 @@ func TestSyncInstalledFcitxThemesCopiesSelectedRemovesUnselectedBuiltinAndKeepsC
 func TestOpenFcitxThemeListPreselectsInstalledThemes(t *testing.T) {
 	oldList := listAvailableFcitxThemes
 	oldSelections := loadInstalledFcitxThemeSelections
+	oldCurrentConfig := loadCurrentFcitxThemeConfig
 	defer func() {
 		listAvailableFcitxThemes = oldList
 		loadInstalledFcitxThemeSelections = oldSelections
+		loadCurrentFcitxThemeConfig = oldCurrentConfig
 	}()
 
 	listAvailableFcitxThemes = func() ([]string, error) {
@@ -225,6 +288,12 @@ func TestOpenFcitxThemeListPreselectsInstalledThemes(t *testing.T) {
 	}
 	loadInstalledFcitxThemeSelections = func([]string) (map[string]bool, error) {
 		return map[string]bool{"other": true}, nil
+	}
+	loadCurrentFcitxThemeConfig = func() (FcitxThemeConfig, error) {
+		return FcitxThemeConfig{
+			Theme:     "other",
+			DarkTheme: "demo",
+		}, nil
 	}
 
 	m := Model{
@@ -248,11 +317,26 @@ func TestOpenFcitxThemeListPreselectsInstalledThemes(t *testing.T) {
 	if got.FcitxThemeSelections["demo"] {
 		t.Fatalf("non-existing theme should not be preselected: %#v", got.FcitxThemeSelections)
 	}
+	if got.FcitxThemeCurrent.Theme != "other" {
+		t.Fatalf("current light theme = %q, want %q", got.FcitxThemeCurrent.Theme, "other")
+	}
+	if got.FcitxThemeCurrent.DarkTheme != "demo" {
+		t.Fatalf("current dark theme = %q, want %q", got.FcitxThemeCurrent.DarkTheme, "demo")
+	}
 }
 
 func TestApplyFcitxThemeChoiceSyncsSelectionAndMovesToDefaultList(t *testing.T) {
 	oldSync := syncInstalledFcitxThemeSelections
+	oldCurrentConfig := loadCurrentFcitxThemeConfig
 	defer func() { syncInstalledFcitxThemeSelections = oldSync }()
+	defer func() { loadCurrentFcitxThemeConfig = oldCurrentConfig }()
+
+	loadCurrentFcitxThemeConfig = func() (FcitxThemeConfig, error) {
+		return FcitxThemeConfig{
+			Theme:     "other",
+			DarkTheme: "demo",
+		}, nil
+	}
 
 	called := false
 	syncInstalledFcitxThemeSelections = func(themeNames []string, selections map[string]bool) error {
@@ -284,34 +368,70 @@ func TestApplyFcitxThemeChoiceSyncsSelectionAndMovesToDefaultList(t *testing.T) 
 	if got.State != ViewFcitxThemeDefaultList {
 		t.Fatalf("state after syncing fcitx themes = %v, want %v", got.State, ViewFcitxThemeDefaultList)
 	}
+	if got.FcitxThemeDefaultKey != fcitxThemeSelectionLight {
+		t.Fatalf("FcitxThemeDefaultKey = %q, want %q", got.FcitxThemeDefaultKey, fcitxThemeSelectionLight)
+	}
+	if got.FcitxThemeDefaultChoice != 1 {
+		t.Fatalf("FcitxThemeDefaultChoice = %d, want %d", got.FcitxThemeDefaultChoice, 1)
+	}
 }
 
-func TestApplyFcitxThemeDefaultChoiceSetsSelectedTheme(t *testing.T) {
+func TestApplyFcitxThemeDefaultChoiceSetsLightAndDarkThemes(t *testing.T) {
 	oldSet := setFcitxThemeDefault
 	defer func() { setFcitxThemeDefault = oldSet }()
 
-	calledWith := ""
-	setFcitxThemeDefault = func(themeName string) error {
-		calledWith = themeName
+	useDarkTheme := true
+	calledWith := FcitxThemeConfig{}
+	setFcitxThemeDefault = func(cfg FcitxThemeConfig) error {
+		calledWith = cfg
 		return nil
 	}
 
 	m := Model{
 		State:                   ViewFcitxThemeDefaultList,
-		FcitxThemeChoice:        1,
+		FcitxThemeChoice:        0,
 		FcitxThemeDefaultChoice: 1,
+		FcitxThemeDefaultKey:    fcitxThemeSelectionLight,
 		FcitxThemeList:          []string{"demo", "other"},
 		FcitxThemeSelections:    map[string]bool{"demo": true, "other": true},
+		FcitxThemeCurrent: FcitxThemeConfig{
+			DarkTheme:    "demo",
+			UseDarkTheme: &useDarkTheme,
+		},
 	}
 
 	next, _ := m.applyFcitxThemeDefaultChoice()
 	got := next.(Model)
-
-	if calledWith != "other" {
-		t.Fatalf("setFcitxThemeDefault() called with %q, want %q", calledWith, "other")
+	if got.FcitxThemeLightSelected != "other" {
+		t.Fatalf("FcitxThemeLightSelected = %q, want %q", got.FcitxThemeLightSelected, "other")
 	}
-	if got.FcitxThemeSelected != "other" {
-		t.Fatalf("FcitxThemeSelected = %q, want %q", got.FcitxThemeSelected, "other")
+	if got.FcitxThemeDefaultKey != fcitxThemeSelectionDark {
+		t.Fatalf("FcitxThemeDefaultKey = %q, want %q", got.FcitxThemeDefaultKey, fcitxThemeSelectionDark)
+	}
+	if got.FcitxThemeDefaultChoice != 0 {
+		t.Fatalf("FcitxThemeDefaultChoice = %d, want %d", got.FcitxThemeDefaultChoice, 0)
+	}
+	if got.State != ViewFcitxThemeDefaultList {
+		t.Fatalf("state after selecting light theme = %v, want %v", got.State, ViewFcitxThemeDefaultList)
+	}
+
+	next, _ = got.applyFcitxThemeDefaultChoice()
+	got = next.(Model)
+
+	if calledWith.Theme != "other" {
+		t.Fatalf("Theme = %q, want %q", calledWith.Theme, "other")
+	}
+	if calledWith.DarkTheme != "demo" {
+		t.Fatalf("DarkTheme = %q, want %q", calledWith.DarkTheme, "demo")
+	}
+	if calledWith.UseDarkTheme == nil || !*calledWith.UseDarkTheme {
+		t.Fatalf("UseDarkTheme = %#v, want true", calledWith.UseDarkTheme)
+	}
+	if calledWith.FollowSystemDarkMode == nil || !*calledWith.FollowSystemDarkMode {
+		t.Fatalf("FollowSystemDarkMode = %#v, want true", calledWith.FollowSystemDarkMode)
+	}
+	if got.FcitxThemeDarkSelected != "demo" {
+		t.Fatalf("FcitxThemeDarkSelected = %q, want %q", got.FcitxThemeDarkSelected, "demo")
 	}
 	if got.State != ViewFcitxThemeDeployPrompt {
 		t.Fatalf("state after applying default = %v, want %v", got.State, ViewFcitxThemeDeployPrompt)

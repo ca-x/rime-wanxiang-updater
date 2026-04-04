@@ -4,7 +4,7 @@ import "time"
 
 // 常量定义
 const (
-	VERSION      = "v0.6.18"
+	VERSION      = "v0.6.22"
 	OWNER        = "amzxyz"
 	REPO         = "rime_wanxiang"
 	CNB_REPO     = "rime-wanxiang"

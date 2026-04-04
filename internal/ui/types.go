@@ -133,7 +133,10 @@ type Model struct {
 	FcitxThemeSearchQuery   string
 	FcitxThemeSelections    map[string]bool
 	FcitxThemeDefaultChoice int
-	FcitxThemeSelected      string
+	FcitxThemeDefaultKey    string
+	FcitxThemeLightSelected string
+	FcitxThemeDarkSelected  string
+	FcitxThemeCurrent       FcitxThemeConfig
 
 	// Engine selector UI state
 	EngineSelections map[string]bool // 引擎名 -> 是否选中

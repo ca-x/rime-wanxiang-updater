@@ -23,3 +23,11 @@ func installAndSetFcitxTheme(themeName string) error {
 func applyFcitxThemeDefault(themeName string) error {
 	return fmt.Errorf("fcitx5 themes are only supported on linux")
 }
+
+func applyFcitxThemeConfig(cfg FcitxThemeConfig) error {
+	return fmt.Errorf("fcitx5 themes are only supported on linux")
+}
+
+func currentFcitxThemeConfig() (FcitxThemeConfig, error) {
+	return FcitxThemeConfig{}, fmt.Errorf("fcitx5 themes are only supported on linux")
+}

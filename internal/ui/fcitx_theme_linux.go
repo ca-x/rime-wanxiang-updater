@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os/exec"
@@ -63,36 +64,83 @@ func installAndSetFcitxTheme(themeName string) error {
 		return err
 	}
 
-	return applyFcitxThemeDefault(themeName)
+	return applyFcitxThemeConfig(FcitxThemeConfig{Theme: themeName})
 }
 
 func applyFcitxThemeDefault(themeName string) error {
+	return applyFcitxThemeConfig(FcitxThemeConfig{Theme: themeName})
+}
+
+func applyFcitxThemeConfig(cfg FcitxThemeConfig) error {
 	configPath, err := fcitxClassicUIConfigPath()
 	if err != nil {
 		return err
 	}
 
-	return setFcitxThemeWithFallback(themeName, configPath, setFcitxThemeViaDBus)
+	return setFcitxThemeWithFallback(cfg, configPath, setFcitxThemeViaDBus)
 }
 
-func setFcitxThemeViaDBus(themeName string) error {
+func currentFcitxThemeConfig() (FcitxThemeConfig, error) {
+	configPath, err := fcitxClassicUIConfigPath()
+	if err != nil {
+		return FcitxThemeConfig{}, err
+	}
+
+	return readFcitxThemeConfigWithFallback(configPath, getFcitxThemeConfigViaDBus)
+}
+
+func setFcitxThemeViaDBus(cfg FcitxThemeConfig) error {
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
 		return fmt.Errorf("connect dbus: %w", err)
 	}
 	defer conn.Close()
 
+	payload, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal fcitx theme config: %w", err)
+	}
+
 	obj := conn.Object("org.fcitx.Fcitx5", "/controller")
-	configValue := fmt.Sprintf(`{"Theme":"%s"}`, themeName)
 	call := obj.Call(
 		"org.fcitx.Fcitx.Controller1.SetConfig",
 		0,
 		"fcitx://config/addon/classicui/classicui",
-		configValue,
+		string(payload),
 	)
 	if call.Err != nil {
 		return fmt.Errorf("set fcitx theme via dbus: %w", call.Err)
 	}
 
 	return nil
+}
+
+func getFcitxThemeConfigViaDBus() (FcitxThemeConfig, error) {
+	conn, err := dbus.ConnectSessionBus()
+	if err != nil {
+		return FcitxThemeConfig{}, fmt.Errorf("connect dbus: %w", err)
+	}
+	defer conn.Close()
+
+	obj := conn.Object("org.fcitx.Fcitx5", "/controller")
+	call := obj.Call(
+		"org.fcitx.Fcitx.Controller1.GetConfig",
+		0,
+		"fcitx://config/addon/classicui/classicui",
+	)
+	if call.Err != nil {
+		return FcitxThemeConfig{}, fmt.Errorf("get fcitx theme via dbus: %w", call.Err)
+	}
+
+	var result string
+	if err := call.Store(&result); err != nil {
+		return FcitxThemeConfig{}, fmt.Errorf("store fcitx theme config: %w", err)
+	}
+
+	var cfg FcitxThemeConfig
+	if err := json.Unmarshal([]byte(result), &cfg); err != nil {
+		return FcitxThemeConfig{}, fmt.Errorf("unmarshal fcitx theme config: %w", err)
+	}
+
+	return cfg, nil
 }

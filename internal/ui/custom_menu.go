@@ -40,7 +40,8 @@ var (
 		}
 		return syncInstalledFcitxThemes(themeFS, root, themeNames, selections)
 	}
-	setFcitxThemeDefault = applyFcitxThemeDefault
+	loadCurrentFcitxThemeConfig = currentFcitxThemeConfig
+	setFcitxThemeDefault        = applyFcitxThemeConfig
 )
 
 func themePatchTargetForPlatform(platform string, installedEngines []string) (string, string, bool) {
@@ -604,12 +605,20 @@ func (m Model) openFcitxThemeList() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	currentConfig, err := loadCurrentFcitxThemeConfig()
+	if err != nil {
+		currentConfig = FcitxThemeConfig{}
+	}
+
 	m.FcitxThemeList = themes
 	m.FcitxThemeChoice = 0
 	m.FcitxThemeSearchQuery = ""
 	m.FcitxThemeSelections = selections
 	m.FcitxThemeDefaultChoice = 0
-	m.FcitxThemeSelected = ""
+	m.FcitxThemeDefaultKey = fcitxThemeSelectionLight
+	m.FcitxThemeLightSelected = ""
+	m.FcitxThemeDarkSelected = ""
+	m.FcitxThemeCurrent = currentConfig
 	m.syncFcitxThemeFilterState()
 	m.State = ViewFcitxThemeList
 	return m, nil
@@ -730,6 +739,13 @@ func (m Model) applyFcitxThemeChoice() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if m.FcitxThemeCurrent == (FcitxThemeConfig{}) {
+		currentConfig, err := loadCurrentFcitxThemeConfig()
+		if err == nil {
+			m.FcitxThemeCurrent = currentConfig
+		}
+	}
+
 	if err := syncInstalledFcitxThemeSelections(m.FcitxThemeList, m.FcitxThemeSelections); err != nil {
 		m.ResultSuccess = false
 		m.ResultSkipped = false
@@ -738,7 +754,10 @@ func (m Model) applyFcitxThemeChoice() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m.FcitxThemeDefaultChoice = 0
+	m.FcitxThemeDefaultKey = fcitxThemeSelectionLight
+	m.FcitxThemeLightSelected = ""
+	m.FcitxThemeDarkSelected = ""
+	m.FcitxThemeDefaultChoice = preferredFcitxThemeChoice(selected, m.FcitxThemeCurrent.Theme)
 	m.State = ViewFcitxThemeDefaultList
 	return m, nil
 }
@@ -752,6 +771,10 @@ func (m Model) renderFcitxThemeList() string {
 	b.WriteString(lipgloss.NewStyle().
 		Foreground(m.Styles.Muted).
 		Render(m.t("custom.fcitx_theme.selected_count", len(m.selectedFcitxThemes()))) + "\n\n")
+	b.WriteString(m.renderSummaryCard([][2]string{
+		{m.t("custom.fcitx_theme.current_light"), fcitxThemeNameOrUnset(m, m.FcitxThemeCurrent.Theme)},
+		{m.t("custom.fcitx_theme.current_dark"), fcitxThemeNameOrUnset(m, m.FcitxThemeCurrent.DarkTheme)},
+	}) + "\n\n")
 
 	searchValue := m.FcitxThemeSearchQuery
 	searchStyle := lipgloss.NewStyle().Foreground(m.Styles.Foreground)
@@ -837,7 +860,20 @@ func (m Model) applyFcitxThemeDefaultChoice() (tea.Model, tea.Cmd) {
 	}
 
 	themeName := selected[m.FcitxThemeDefaultChoice]
-	if err := setFcitxThemeDefault(themeName); err != nil {
+	if m.FcitxThemeDefaultKey == fcitxThemeSelectionLight {
+		m.FcitxThemeLightSelected = themeName
+		m.FcitxThemeDefaultKey = fcitxThemeSelectionDark
+		m.FcitxThemeDefaultChoice = preferredFcitxThemeChoice(selected, m.FcitxThemeCurrent.DarkTheme, themeName)
+		return m, nil
+	}
+
+	cfg := FcitxThemeConfig{
+		Theme:                m.FcitxThemeLightSelected,
+		DarkTheme:            themeName,
+		UseDarkTheme:         m.FcitxThemeCurrent.UseDarkTheme,
+		FollowSystemDarkMode: boolPtr(true),
+	}
+	if err := setFcitxThemeDefault(cfg); err != nil {
 		m.ResultSuccess = false
 		m.ResultSkipped = false
 		m.ResultMsg = m.t("custom.result.fcitx_theme_error", err)
@@ -845,7 +881,7 @@ func (m Model) applyFcitxThemeDefaultChoice() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m.FcitxThemeSelected = themeName
+	m.FcitxThemeDarkSelected = themeName
 	m.State = ViewFcitxThemeDeployPrompt
 	return m, nil
 }
@@ -854,7 +890,23 @@ func (m Model) renderFcitxThemeDefaultList() string {
 	var b strings.Builder
 
 	b.WriteString(m.renderHeaderBlock())
-	b.WriteString(m.renderTitle("◆ "+m.t("custom.fcitx_theme.default_title")+" ◆") + "\n\n")
+
+	titleKey := "custom.fcitx_theme.default_title_light"
+	hintKey := "custom.fcitx_theme.default_hint_light"
+	summary := [][2]string{
+		{m.t("custom.fcitx_theme.current_light"), fcitxThemeNameOrUnset(m, m.FcitxThemeCurrent.Theme)},
+		{m.t("custom.fcitx_theme.current_dark"), fcitxThemeNameOrUnset(m, m.FcitxThemeCurrent.DarkTheme)},
+	}
+	if m.FcitxThemeDefaultKey == fcitxThemeSelectionDark {
+		titleKey = "custom.fcitx_theme.default_title_dark"
+		hintKey = "custom.fcitx_theme.default_hint_dark"
+		summary = [][2]string{
+			{m.t("custom.fcitx_theme.selected_light"), fcitxThemeNameOrUnset(m, m.FcitxThemeLightSelected)},
+			{m.t("custom.fcitx_theme.current_dark"), fcitxThemeNameOrUnset(m, m.FcitxThemeCurrent.DarkTheme)},
+		}
+	}
+
+	b.WriteString(m.renderTitle("◆ "+m.t(titleKey)+" ◆") + "\n\n")
 
 	selected := m.selectedFcitxThemes()
 	if len(selected) == 0 {
@@ -862,6 +914,8 @@ func (m Model) renderFcitxThemeDefaultList() string {
 		b.WriteString(m.renderHintStrip(m.t("ui.hint.back")))
 		return m.renderScreen(b.String())
 	}
+
+	b.WriteString(m.renderSummaryCard(summary) + "\n\n")
 
 	var listContent strings.Builder
 	start, end, _, _ := m.pagedListPageWindow(m.FcitxThemeDefaultChoice, len(selected))
@@ -889,7 +943,7 @@ func (m Model) renderFcitxThemeDefaultList() string {
 		"custom.fcitx_theme.page",
 		"custom.fcitx_theme.page_empty",
 	)) + "\n\n")
-	b.WriteString(m.Styles.Hint.Render(m.t("custom.fcitx_theme.default_hint")) + "\n\n")
+	b.WriteString(m.Styles.Hint.Render(m.t(hintKey)) + "\n\n")
 	b.WriteString(m.renderHintStrip(m.t("ui.hint.nav"), m.t("ui.hint.apply_theme"), m.t("ui.hint.back")))
 
 	return m.renderScreen(b.String())
@@ -926,7 +980,7 @@ func (m Model) runFcitxThemeDeploy() (tea.Model, tea.Cmd) {
 
 	m.ResultSuccess = true
 	m.ResultSkipped = false
-	m.ResultMsg = m.t("custom.result.fcitx_theme_deploy_success", m.FcitxThemeSelected)
+	m.ResultMsg = m.t("custom.result.fcitx_theme_deploy_success", m.FcitxThemeLightSelected, m.FcitxThemeDarkSelected)
 	m.State = ViewResult
 	return m, nil
 }
@@ -936,9 +990,30 @@ func (m Model) renderFcitxThemeDeployPrompt() string {
 
 	b.WriteString(m.renderHeaderBlock())
 	b.WriteString(m.renderTitle("◆ "+m.t("custom.fcitx_theme.deploy_title")+" ◆") + "\n\n")
-	b.WriteString(m.renderPanel(m.t("custom.fcitx_theme.deploy_body", m.FcitxThemeSelected), m.Styles.Secondary) + "\n\n")
+	b.WriteString(m.renderPanel(m.t("custom.fcitx_theme.deploy_body", m.FcitxThemeLightSelected, m.FcitxThemeDarkSelected), m.Styles.Secondary) + "\n\n")
 	b.WriteString(m.Styles.Grid.Render(gridLine) + "\n\n")
 	b.WriteString(m.renderHintStrip(m.t("custom.fcitx_theme.hint.deploy"), m.t("custom.fcitx_theme.hint.return")))
 
 	return m.renderScreen(b.String())
+}
+
+func preferredFcitxThemeChoice(selected []string, candidates ...string) int {
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		for index, themeName := range selected {
+			if themeName == candidate {
+				return index
+			}
+		}
+	}
+	return 0
+}
+
+func fcitxThemeNameOrUnset(m Model, themeName string) string {
+	if strings.TrimSpace(themeName) == "" {
+		return m.t("config.value.unset")
+	}
+	return themeName
 }
