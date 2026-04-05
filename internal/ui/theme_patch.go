@@ -20,17 +20,22 @@ type themePatchDefinition struct {
 	Values      map[string]any
 }
 
+var (
+	themePatchTargetResolver = themePatchTargetForPlatform
+	themePatchDataDir        = config.GetEngineDataDir
+)
+
 var deployThemePatch = func(cfg *types.Config) error {
 	return deployer.GetDeployer(cfg).Deploy()
 }
 
 func (m Model) themePatchFilePath() (string, error) {
-	engineName, fileName, ok := themePatchTargetForPlatform(runtime.GOOS, m.Cfg.Config.InstalledEngines)
+	engineName, fileName, ok := themePatchTargetResolver(runtime.GOOS, m.Cfg.Config.InstalledEngines)
 	if !ok {
 		return "", fmt.Errorf("当前平台没有可用的主题 patch 目标")
 	}
 
-	rootDir := config.GetEngineDataDir(engineName)
+	rootDir := themePatchDataDir(engineName)
 	if rootDir == "" {
 		return "", fmt.Errorf("未找到 %s 的用户目录", engineName)
 	}

@@ -284,6 +284,111 @@ func TestHandleThemePatchDeployPromptInput(t *testing.T) {
 	}
 }
 
+func TestThemePatchFlowSpaceRuneSelectionCanBeConfirmedAndDeployed(t *testing.T) {
+	oldTargetResolver := themePatchTargetResolver
+	oldDataDirResolver := themePatchDataDir
+	oldDeploy := deployThemePatch
+	defer func() {
+		themePatchTargetResolver = oldTargetResolver
+		themePatchDataDir = oldDataDirResolver
+		deployThemePatch = oldDeploy
+	}()
+
+	dir := t.TempDir()
+	themePatchTargetResolver = func(platform string, installedEngines []string) (string, string, bool) {
+		return "小狼毫", "weasel.custom.yaml", true
+	}
+	themePatchDataDir = func(engineName string) string {
+		if engineName != "小狼毫" {
+			t.Fatalf("engineName = %q, want %q", engineName, "小狼毫")
+		}
+		return dir
+	}
+
+	deployCalled := false
+	deployThemePatch = func(cfg *types.Config) error {
+		deployCalled = true
+		return nil
+	}
+
+	m := newThemePatchTestModel(t)
+	m.Cfg.Config.InstalledEngines = []string{"小狼毫"}
+	m.InitThemePatchListView()
+	m.ThemePatchSearchQuery = "lumk"
+	m.syncThemePatchFilterState()
+
+	next, _ := m.handleThemePatchListInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	got := next.(Model)
+	if !got.ThemePatchSelections["Lumk_light"] {
+		t.Fatalf("ThemePatchSelections should contain filtered key %q: %#v", "Lumk_light", got.ThemePatchSelections)
+	}
+
+	next, _ = got.handleThemePatchListInput(tea.KeyMsg{Type: tea.KeyEnter})
+	got = next.(Model)
+	if got.State != ViewThemePatchDefaultList {
+		t.Fatalf("state after preset confirm = %v, want %v", got.State, ViewThemePatchDefaultList)
+	}
+
+	path := filepath.Join(dir, "weasel.custom.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() after preset confirm error = %v", err)
+	}
+
+	var doc map[string]any
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("yaml.Unmarshal() after preset confirm error = %v", err)
+	}
+
+	patch, ok := normalizeStringMap(doc["patch"])
+	if !ok {
+		t.Fatalf("patch section missing or invalid after preset confirm: %#v", doc["patch"])
+	}
+	if _, ok := normalizeStringMap(patch["preset_color_schemes/Lumk_light"]); !ok {
+		t.Fatalf("selected preset missing after preset confirm: %#v", patch["preset_color_schemes/Lumk_light"])
+	}
+
+	next, _ = got.handleThemePatchDefaultListInput(tea.KeyMsg{Type: tea.KeyEnter})
+	got = next.(Model)
+	if got.State != ViewThemePatchDeployPrompt {
+		t.Fatalf("state after default confirm = %v, want %v", got.State, ViewThemePatchDeployPrompt)
+	}
+	if got.ThemePatchDefaultKey != "Lumk_light" {
+		t.Fatalf("ThemePatchDefaultKey = %q, want %q", got.ThemePatchDefaultKey, "Lumk_light")
+	}
+
+	data, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() after default confirm error = %v", err)
+	}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("yaml.Unmarshal() after default confirm error = %v", err)
+	}
+
+	patch, ok = normalizeStringMap(doc["patch"])
+	if !ok {
+		t.Fatalf("patch section missing or invalid after default confirm: %#v", doc["patch"])
+	}
+	if got := patch["style/color_scheme"]; got != "Lumk_light" {
+		t.Fatalf("style/color_scheme = %#v, want %q", got, "Lumk_light")
+	}
+	if got := patch["style/color_scheme_dark"]; got != "Lumk_light" {
+		t.Fatalf("style/color_scheme_dark = %#v, want %q", got, "Lumk_light")
+	}
+
+	next, _ = got.handleThemePatchDeployPromptInput(tea.KeyMsg{Type: tea.KeyEnter})
+	got = next.(Model)
+	if got.State != ViewResult {
+		t.Fatalf("state after deploy confirm = %v, want %v", got.State, ViewResult)
+	}
+	if !got.ResultSuccess {
+		t.Fatalf("ResultSuccess after deploy confirm = %v, want true", got.ResultSuccess)
+	}
+	if !deployCalled {
+		t.Fatalf("deployThemePatch should run on deploy confirm")
+	}
+}
+
 func TestHandleThemePatchListInputFiltersResultsAndEscClearsSearch(t *testing.T) {
 	m := newThemePatchTestModel(t)
 	m.InitThemePatchListView()
@@ -321,6 +426,23 @@ func TestHandleThemePatchListInputSpaceSelectsFilteredTheme(t *testing.T) {
 	}
 	if got.ThemePatchSelections["jianchun"] {
 		t.Fatalf("ThemePatchSelections should not contain unfiltered first key: %#v", got.ThemePatchSelections)
+	}
+}
+
+func TestHandleThemePatchListInputSpaceRuneSelectsFilteredTheme(t *testing.T) {
+	m := newThemePatchTestModel(t)
+	m.InitThemePatchListView()
+	m.ThemePatchSearchQuery = "lumk"
+	m.syncThemePatchFilterState()
+
+	next, _ := m.handleThemePatchListInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	got := next.(Model)
+
+	if !got.ThemePatchSelections["Lumk_light"] {
+		t.Fatalf("ThemePatchSelections should contain filtered key %q: %#v", "Lumk_light", got.ThemePatchSelections)
+	}
+	if got.ThemePatchSearchQuery != "lumk" {
+		t.Fatalf("ThemePatchSearchQuery = %q, want %q", got.ThemePatchSearchQuery, "lumk")
 	}
 }
 

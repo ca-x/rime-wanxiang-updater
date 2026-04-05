@@ -650,6 +650,22 @@ func TestHandleFcitxThemeListInputSpaceSelectsFilteredTheme(t *testing.T) {
 	}
 }
 
+func TestHandleFcitxThemeListInputSpaceRuneSelectsFilteredTheme(t *testing.T) {
+	m := newFcitxThemeTestModel(t)
+	m.FcitxThemeSearchQuery = "cha"
+	m.syncFcitxThemeFilterState()
+
+	next, _ := m.handleFcitxThemeListInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	got := next.(Model)
+
+	if !got.FcitxThemeSelections["charlie"] {
+		t.Fatalf("FcitxThemeSelections should contain filtered theme %q: %#v", "charlie", got.FcitxThemeSelections)
+	}
+	if got.FcitxThemeSearchQuery != "cha" {
+		t.Fatalf("FcitxThemeSearchQuery = %q, want %q", got.FcitxThemeSearchQuery, "cha")
+	}
+}
+
 func TestRenderFcitxThemeListShowsOnlyCurrentPage(t *testing.T) {
 	m := newFcitxThemeTestModel(t)
 	m.Width = 80

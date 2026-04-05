@@ -44,6 +44,14 @@ var (
 	setFcitxThemeDefault        = applyFcitxThemeConfig
 )
 
+func isSelectionToggleKey(msg tea.KeyMsg) bool {
+	if msg.Type == tea.KeySpace {
+		return true
+	}
+
+	return msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == ' '
+}
+
 func themePatchTargetForPlatform(platform string, installedEngines []string) (string, string, bool) {
 	switch platform {
 	case "windows":
@@ -178,6 +186,11 @@ func (m *Model) InitThemePatchListView() {
 }
 
 func (m Model) handleThemePatchListInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if isSelectionToggleKey(msg) {
+		m.toggleThemePatchSelection()
+		return m, nil
+	}
+
 	switch msg.Type {
 	case tea.KeyRunes:
 		m.ThemePatchSearchQuery += string(msg.Runes)
@@ -209,8 +222,6 @@ func (m Model) handleThemePatchListInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.ThemePatchChoice < len(m.themePatchFilteredDefinitions())-1 {
 			m.ThemePatchChoice++
 		}
-	case tea.KeySpace:
-		m.toggleThemePatchSelection()
 	case tea.KeyEnter:
 		return m.applyThemePatchPresetChoice()
 	}
@@ -625,6 +636,11 @@ func (m Model) openFcitxThemeList() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleFcitxThemeListInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if isSelectionToggleKey(msg) {
+		m.toggleFcitxThemeSelection()
+		return m, nil
+	}
+
 	switch msg.Type {
 	case tea.KeyRunes:
 		m.FcitxThemeSearchQuery += string(msg.Runes)
@@ -656,8 +672,6 @@ func (m Model) handleFcitxThemeListInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.FcitxThemeChoice < len(m.fcitxThemeFilteredList())-1 {
 			m.FcitxThemeChoice++
 		}
-	case tea.KeySpace:
-		m.toggleFcitxThemeSelection()
 	case tea.KeyEnter:
 		return m.applyFcitxThemeChoice()
 	}
