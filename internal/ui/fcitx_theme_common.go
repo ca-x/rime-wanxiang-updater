@@ -17,10 +17,10 @@ const (
 )
 
 type FcitxThemeConfig struct {
-	Theme                string `json:"Theme,omitempty"`
-	DarkTheme            string `json:"DarkTheme,omitempty"`
-	UseDarkTheme         *bool  `json:"UseDarkTheme,omitempty"`
-	FollowSystemDarkMode *bool  `json:"FollowSystemDarkMode,omitempty"`
+	Theme                string `json:"Theme,omitzero"`
+	DarkTheme            string `json:"DarkTheme,omitzero"`
+	UseDarkTheme         *bool  `json:"UseDarkTheme,omitzero"`
+	FollowSystemDarkMode *bool  `json:"FollowSystemDarkMode,omitzero"`
 }
 
 func fcitxThemeSupportedForPlatform(platform string, installedEngines []string) bool {

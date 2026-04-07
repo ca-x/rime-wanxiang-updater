@@ -206,7 +206,7 @@ func nonEmptyLines(text string) []string {
 
 func maxTrimmedLineWidth(text string) int {
 	maxWidth := 0
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		width := lipgloss.Width(strings.TrimSpace(line))
 		if width > maxWidth {
 			maxWidth = width

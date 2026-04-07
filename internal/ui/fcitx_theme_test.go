@@ -759,7 +759,7 @@ func newFcitxThemeTestModel(t *testing.T) Model {
 }
 
 func containsLine(content, line string) bool {
-	for _, item := range strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n") {
+	for item := range strings.SplitSeq(strings.ReplaceAll(content, "\r\n", "\n"), "\n") {
 		if item == line {
 			return true
 		}
