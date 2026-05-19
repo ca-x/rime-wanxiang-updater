@@ -67,7 +67,7 @@ func (m *ModelUpdater) GetStatus() (*types.UpdateStatus, error) {
 		}
 
 		status.LocalTime = localRecord.UpdateTime
-		status.NeedsUpdate = remoteInfo.UpdateTime.After(localRecord.UpdateTime)
+		status.NeedsUpdate = hasMeaningfulUpdate(localRecord, remoteInfo)
 
 		if status.NeedsUpdate {
 			remoteVersion := remoteInfo.Tag
@@ -183,31 +183,31 @@ func (m *ModelUpdater) Run(progress types.ProgressFunc) error {
 
 	// 校验本地文件
 	progress("正在校验本地文件...", 0.1, "", "", 0, 0, 0, false)
+	localRecord := m.GetLocalRecord(recordPath)
 
-	// 优先使用 SHA256 校验（如果有）
-	if m.UpdateInfo.SHA256 != "" && m.CompareHash(m.UpdateInfo.SHA256, targetPath) {
-		progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
-		m.SaveRecord(recordPath, "model_name", types.MODEL_FILE, m.UpdateInfo)
-		return nil
-	}
-
-	// 如果没有 SHA256（如 CNB 镜像），检查文件是否存在且有本地记录
-	if m.UpdateInfo.SHA256 == "" && fileutil.FileExists(targetPath) {
-		localRecord := m.GetLocalRecord(recordPath)
-		if localRecord != nil && localRecord.Name == types.MODEL_FILE {
-			// 文件存在且有记录，认为已是最新版本（除非 UpdateTime 更新）
-			if !m.UpdateInfo.UpdateTime.After(localRecord.UpdateTime) {
-				progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
-				return nil
-			}
+	// 无版本更新且文件存在 → 跳过下载
+	if localRecord != nil && !hasMeaningfulUpdate(localRecord, m.UpdateInfo) {
+		debugPrintf("模型 Run: hasMeaningfulUpdate=false, targetPath=%s exists=%v", targetPath, fileutil.FileExists(targetPath))
+		if fileutil.FileExists(targetPath) {
+			progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
+			m.SkippedCache = true
+			return nil
 		}
+		debugPrintf("模型 Run: targetPath 不存在，继续下载")
 	}
 
 	// 下载文件
+	debugPrintf("模型 Run: 校验未拦住，开始下载 URL=%s", m.UpdateInfo.URL)
 	progress(fmt.Sprintf("准备从 %s 下载模型...", source), 0.15, source, m.UpdateInfo.URL, 0, 0, 0, false)
 	tempFile := filepath.Join(m.Config.CacheDir, fmt.Sprintf("%s_%s.tmp", types.MODEL_FILE, m.UpdateInfo.SHA256))
 	if err := m.DownloadFile(m.UpdateInfo.URL, tempFile, types.MODEL_FILE, source, progress); err != nil {
 		return fmt.Errorf("下载失败: %w", err)
+	}
+
+	// 计算下载文件的 SHA256（GitHub 源不返回此字段）
+	progress("正在计算文件校验和...", 0.65, "", "", 0, 0, 0, false)
+	if hash, err := fileutil.CalculateSHA256(tempFile); err == nil {
+		m.UpdateInfo.SHA256 = hash
 	}
 
 	// 应用更新

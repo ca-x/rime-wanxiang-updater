@@ -39,7 +39,7 @@ func (d *DictUpdater) GetStatus() (*types.UpdateStatus, error) {
 	}
 
 	// 检查关键文件是否存在
-	keyFile := filepath.Join(d.Config.GetDictExtractPath(), "chengyu.txt")
+	keyFile := filepath.Join(d.Config.GetDictExtractPath(), "jichu.dict.yaml")
 	keyFileExists := fileutil.FileExists(keyFile)
 
 	// 获取本地版本信息
@@ -239,15 +239,38 @@ func (d *DictUpdater) Run(progress types.ProgressFunc) error {
 	recordPath := d.Config.GetDictRecordPath()
 	targetFile := filepath.Join(d.Config.CacheDir, d.Config.Config.DictFile)
 
-	// 校验本地文件：只有当版本未变化且缓存文件哈希匹配时才跳过下载
+	// 校验本地文件
 	progress("正在校验本地文件...", 0.1, "", "", 0, 0, 0, false)
 	localRecord := d.GetLocalRecord(recordPath)
+
+	// 第1关: 无版本更新 → 直接跳过（不管缓存文件是否存在）
+	if localRecord != nil && d.UpdateInfo != nil && !hasMeaningfulUpdate(localRecord, d.UpdateInfo) {
+		keyFile := filepath.Join(d.Config.GetDictExtractPath(), "jichu.dict.yaml")
+		debugPrintf("词库 Run: 第1关 hasMeaningfulUpdate=false, keyFile=%s exists=%v", keyFile, fileutil.FileExists(keyFile))
+		if fileutil.FileExists(keyFile) {
+			progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
+			d.SkippedCache = true
+			return nil
+		}
+	}
+
+	// 第2关: 缓存 zip 哈希匹配 → 跳过下载或从缓存解压
 	if d.canReuseCachedAsset(localRecord, d.UpdateInfo, targetFile, d.CompareHash) {
-		progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
-		return nil
+		keyFile := filepath.Join(d.Config.GetDictExtractPath(), "jichu.dict.yaml")
+		debugPrintf("词库 Run: 第2关 canReuseCachedAsset=true, keyFile=%s exists=%v", keyFile, fileutil.FileExists(keyFile))
+		if fileutil.FileExists(keyFile) {
+			progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
+			d.SkippedCache = true
+			return nil
+		}
+		// 缓存 zip 完好但文件缺失 → 从缓存解压，不重新下载
+		progress("文件缺失，正在从缓存恢复...", 0.7, "", "", 0, 0, 0, false)
+		debugPrintf("词库 Run: keyFile 缺失，从缓存 zip 解压 targetFile=%s", targetFile)
+		return d.applyUpdate(targetFile, targetFile, progress)
 	}
 
 	// 下载文件
+	debugPrintf("词库 Run: 两关都没拦住，开始下载 URL=%s", d.UpdateInfo.URL)
 	progress(fmt.Sprintf("准备从 %s 下载词库...", source), 0.15, source, d.UpdateInfo.URL, 0, 0, 0, false)
 	tempFile := filepath.Join(d.Config.CacheDir, fmt.Sprintf("temp_dict_%d.zip", time.Now().Unix()))
 	if err := d.DownloadFileWithValidation(d.UpdateInfo.URL, tempFile, d.Config.Config.DictFile, source, d.UpdateInfo.Size, progress); err != nil {
@@ -307,13 +330,15 @@ func (d *DictUpdater) applyUpdate(temp, target string, progress types.ProgressFu
 		}
 	}
 
-	// 重命名临时文件
-	progress("正在保存文件...", 0.95, "", "", 0, 0, 0, false)
-	if fileutil.FileExists(target) {
-		os.Remove(target)
-	}
-	if err := fileutil.MoveFile(temp, target); err != nil {
-		return fmt.Errorf("重命名失败: %w", err)
+	// 重命名临时文件（temp==target 时来自缓存恢复，跳过）
+	if temp != target {
+		progress("正在保存文件...", 0.95, "", "", 0, 0, 0, false)
+		if fileutil.FileExists(target) {
+			os.Remove(target)
+		}
+		if err := fileutil.MoveFile(temp, target); err != nil {
+			return fmt.Errorf("重命名失败: %w", err)
+		}
 	}
 
 	// 保存记录
