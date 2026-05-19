@@ -148,7 +148,7 @@ func TestFindModelReleaseUsesModelTagMetadata(t *testing.T) {
 					Name:               "base-dicts.zip",
 					BrowserDownloadURL: "https://example.com/base-dicts.zip",
 					UpdatedAt:          time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
-					ID:                 "dict-asset",
+					ID:                 1001,
 					Size:               11,
 				},
 			},
@@ -160,7 +160,7 @@ func TestFindModelReleaseUsesModelTagMetadata(t *testing.T) {
 					Name:               types.MODEL_FILE,
 					BrowserDownloadURL: "https://example.com/model.gram",
 					UpdatedAt:          time.Date(2026, 4, 2, 7, 44, 10, 0, time.UTC),
-					ID:                 "model-asset",
+					ID:                 2001,
 					SHA256:             "abc123",
 					Size:               210421804,
 				},
@@ -181,7 +181,7 @@ func TestFindModelReleaseUsesModelTagMetadata(t *testing.T) {
 		t.Fatalf("info.Size = %d, want %d", info.Size, 210421804)
 	}
 
-	if info.ID != "model-asset" {
-		t.Fatalf("info.ID = %q, want %q", info.ID, "model-asset")
+	if info.ID != "2001" {
+		t.Fatalf("info.ID = %q, want %q", info.ID, "2001")
 	}
 }

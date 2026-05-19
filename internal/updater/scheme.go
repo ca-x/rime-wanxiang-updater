@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"rime-wanxiang-updater/internal/config"
@@ -157,7 +158,7 @@ func findSchemeReleaseWithTagFilter(
 				Tag:         release.TagName,
 				Description: release.Body,
 				SHA256:      asset.SHA256,
-				ID:          asset.ID,
+				ID:          strconv.FormatInt(asset.ID, 10),
 				Size:        asset.Size,
 			}, true
 		}

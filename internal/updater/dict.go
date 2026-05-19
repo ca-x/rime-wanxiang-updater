@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"rime-wanxiang-updater/internal/config"
@@ -142,7 +143,7 @@ func (d *DictUpdater) CheckUpdate() (*types.UpdateInfo, error) {
 				UpdateTime: asset.UpdatedAt,
 				Tag:        release.TagName,
 				SHA256:     asset.SHA256,
-				ID:         asset.ID,
+				ID:         strconv.FormatInt(asset.ID, 10),
 				Size:       asset.Size,
 			}, nil
 		}
@@ -190,7 +191,7 @@ func (d *DictUpdater) findCNBDictInfoAtTag(tag string) (*types.UpdateInfo, bool,
 			UpdateTime: asset.UpdatedAt,
 			Tag:        release.TagName,
 			SHA256:     asset.SHA256,
-			ID:         asset.ID,
+			ID:         strconv.FormatInt(asset.ID, 10),
 			Size:       asset.Size,
 		}, true, nil
 	}

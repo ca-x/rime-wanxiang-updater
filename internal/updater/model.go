@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"rime-wanxiang-updater/internal/config"
 	"rime-wanxiang-updater/internal/fileutil"
@@ -131,7 +132,7 @@ func findModelRelease(releases []types.GitHubRelease) (*types.UpdateInfo, bool) 
 				UpdateTime: asset.UpdatedAt,
 				Tag:        release.TagName,
 				SHA256:     asset.SHA256,
-				ID:         asset.ID,
+				ID:         strconv.FormatInt(asset.ID, 10),
 				Size:       asset.Size,
 			}, true
 		}
