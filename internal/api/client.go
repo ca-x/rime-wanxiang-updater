@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,11 +15,12 @@ import (
 
 // Client API 客户端
 type Client struct {
-	httpClient  *http.Client
-	config      *types.Config
-	githubToken string
-	cnbBaseURL  string
-	mu          sync.Mutex
+	httpClient   *http.Client
+	config       *types.Config
+	githubToken  string
+	tokenChecked bool
+	cnbBaseURL   string
+	mu           sync.Mutex
 
 	cnbTagsPageCache   map[string]cnbTagsPageResult
 	cnbReleaseTagCache map[string]types.GitHubRelease
@@ -100,8 +103,33 @@ func buildHTTPClient(config *types.Config, timeout time.Duration) *http.Client {
 	}
 }
 
+// ensureGitHubToken 尝试通过 gh CLI 自动获取 GitHub token
+func (c *Client) ensureGitHubToken() {
+	if c.githubToken != "" || c.tokenChecked {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.githubToken != "" || c.tokenChecked {
+		return
+	}
+	c.tokenChecked = true
+	cmd := exec.Command("gh", "auth", "token")
+	output, err := cmd.Output()
+	if err == nil {
+		token := strings.TrimSpace(string(output))
+		if token != "" {
+			c.githubToken = token
+		}
+	}
+}
+
 // Get 发送 GET 请求
 func (c *Client) Get(url string) (*http.Response, error) {
+	if !c.config.UseMirror && strings.Contains(url, "api.github.com") {
+		c.ensureGitHubToken()
+	}
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
@@ -123,6 +151,10 @@ func (c *Client) Get(url string) (*http.Response, error) {
 
 // Head 发送 HEAD 请求
 func (c *Client) Head(url string) (*http.Response, error) {
+	if !c.config.UseMirror && strings.Contains(url, "api.github.com") {
+		c.ensureGitHubToken()
+	}
+
 	req, err := http.NewRequest("HEAD", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
