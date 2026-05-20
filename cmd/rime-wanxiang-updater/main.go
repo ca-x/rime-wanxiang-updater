@@ -12,11 +12,11 @@ import (
 	"golang.org/x/term"
 	"rime-wanxiang-updater/internal/config"
 	"rime-wanxiang-updater/internal/controller"
-	"rime-wanxiang-updater/internal/updater"
 	"rime-wanxiang-updater/internal/i18n"
 	"rime-wanxiang-updater/internal/termcolor"
 	"rime-wanxiang-updater/internal/theme"
 	"rime-wanxiang-updater/internal/ui"
+	"rime-wanxiang-updater/internal/updater"
 	"rime-wanxiang-updater/internal/version"
 )
 
@@ -316,7 +316,7 @@ func main() {
 
 	// 创建 Bubble Tea 程序
 	// 使用 WithAltScreen 避免启动序列输出影响终端焦点
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	// 运行程序
 	if _, err := p.Run(); err != nil {

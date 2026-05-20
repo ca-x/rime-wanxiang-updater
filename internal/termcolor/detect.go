@@ -1,11 +1,8 @@
 package termcolor
 
 import (
-	"fmt"
 	"os"
-	"runtime"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -48,12 +45,10 @@ func DetectBackground() Background {
 		return bg
 	}
 
-	// 3. 尝试使用 OSC 11 查询
-	if bg := detectFromOSC11(); bg != BackgroundUnknown {
-		return bg
-	}
-
-	// 4. 默认返回深色（大多数开发者使用深色终端）
+	// Do not probe OSC 11 here. This is a Bubble Tea app, and reading stdin
+	// before Bubble Tea starts can leave a competing reader that consumes user
+	// input escape sequences on terminals that do not answer promptly.
+	// Users can still force the mode with TERM_BACKGROUND/TERMINAL_BACKGROUND.
 	return BackgroundDark
 }
 
@@ -94,86 +89,6 @@ func detectFromEnv() Background {
 	}
 
 	return BackgroundUnknown
-}
-
-// detectFromOSC11 使用 OSC 11 转义序列查询终端背景色
-func detectFromOSC11() Background {
-	// Windows 上跳过 OSC 11 检测,避免干扰后续的键盘输入处理
-	// 这是因为 Windows 控制台的 stdin 读取行为与 Unix 不同,
-	// 可能导致 Bubbletea 无法正确接收第一次按键
-	if runtime.GOOS == "windows" {
-		return BackgroundUnknown
-	}
-
-	oldState, err := makeRaw()
-	if err != nil {
-		return BackgroundUnknown
-	}
-	defer restore(oldState)
-
-	// 发送 OSC 11 查询
-	fmt.Print("\x1b]11;?\x1b\\")
-
-	// 读取响应
-	response := make([]byte, 256)
-	done := make(chan int)
-
-	go func() {
-		n, _ := os.Stdin.Read(response)
-		done <- n
-	}()
-
-	select {
-	case n := <-done:
-		if n > 0 {
-			return parseOSC11Response(string(response[:n]))
-		}
-	case <-time.After(100 * time.Millisecond):
-		return BackgroundUnknown
-	}
-
-	return BackgroundUnknown
-}
-
-// parseOSC11Response 解析 OSC 11 响应
-func parseOSC11Response(response string) Background {
-	// 查找 "rgb:" 或 "rgba:"
-	idx := strings.Index(response, "rgb:")
-	if idx == -1 {
-		return BackgroundUnknown
-	}
-
-	colorPart := response[idx+4:]
-	endIdx := strings.IndexAny(colorPart, "\x1b\x07\\")
-	if endIdx == -1 {
-		return BackgroundUnknown
-	}
-
-	rgbStr := colorPart[:endIdx]
-	parts := strings.Split(rgbStr, "/")
-	if len(parts) != 3 {
-		return BackgroundUnknown
-	}
-
-	// 解析 RGB 值（取前两位十六进制）
-	var r, g, b int
-	if len(parts[0]) >= 2 {
-		fmt.Sscanf(parts[0][:2], "%x", &r)
-	}
-	if len(parts[1]) >= 2 {
-		fmt.Sscanf(parts[1][:2], "%x", &g)
-	}
-	if len(parts[2]) >= 2 {
-		fmt.Sscanf(parts[2][:2], "%x", &b)
-	}
-
-	// 计算相对亮度 Y = 0.2126*R + 0.7152*G + 0.0722*B
-	luminance := 0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b)
-
-	if luminance < 128 {
-		return BackgroundDark
-	}
-	return BackgroundLight
 }
 
 // InitLipgloss 根据终端背景初始化 lipgloss

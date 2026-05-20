@@ -86,6 +86,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case controller.Event:
 		return m.handleControllerEvent(msg)
 
+	case tea.MouseMsg:
+		return m.handleMouseInput(msg)
+
 	case tea.KeyMsg:
 		switch m.State {
 		case ViewWizard:

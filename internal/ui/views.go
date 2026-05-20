@@ -324,9 +324,6 @@ func (m Model) renderMenuEntry(index int, icon, title, desc string, selected boo
 	descStyle := lipgloss.NewStyle().
 		Foreground(m.Styles.Muted)
 	entryWidth := m.menuWidth()
-	if selected {
-		entryWidth -= 2
-	}
 	if entryWidth < 24 {
 		entryWidth = 24
 	}
@@ -349,10 +346,7 @@ func (m Model) renderMenuEntry(index int, icon, title, desc string, selected boo
 		Render(cursor+" "+titleLine) + "\n" +
 		lipgloss.NewStyle().PaddingLeft(3).Render(descStyle.Render(desc))
 
-	return baseStyle.
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.Styles.Accent).
-		Render(selectedContent)
+	return baseStyle.Render(selectedContent)
 }
 
 type menuEntry struct {

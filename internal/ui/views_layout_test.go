@@ -10,6 +10,7 @@ import (
 	"rime-wanxiang-updater/internal/types"
 	"rime-wanxiang-updater/internal/version"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -62,6 +63,82 @@ func TestRenderMenuEntrySelectedFitsPageWidth(t *testing.T) {
 	}
 }
 
+func TestRenderChoiceListKeepsEntryRowsStable(t *testing.T) {
+	m := Model{
+		Width: 80,
+		Styles: &Styles{
+			Primary:    lipgloss.Color(""),
+			Accent:     lipgloss.Color(""),
+			Foreground: lipgloss.Color(""),
+			Muted:      lipgloss.Color(""),
+		},
+	}
+	items := []menuEntry{
+		{icon: "1", text: "第一项", desc: "说明"},
+		{icon: "2", text: "第二项", desc: "说明"},
+		{icon: "3", text: "第三项", desc: "说明"},
+	}
+
+	firstSelected := m.renderChoiceList(items, 0)
+	secondSelected := m.renderChoiceList(items, 1)
+
+	firstLine := lineIndexContaining(firstSelected, "[3]")
+	secondLine := lineIndexContaining(secondSelected, "[3]")
+	if firstLine == -1 || secondLine == -1 {
+		t.Fatalf("renderChoiceList() missing third entry:\nfirst=%q\nsecond=%q", firstSelected, secondSelected)
+	}
+	if firstLine != secondLine {
+		t.Fatalf("third entry moved from line %d to %d when selection changed", firstLine, secondLine)
+	}
+}
+
+func TestMouseClickMenuActivatesClickedEntry(t *testing.T) {
+	m := menuMouseTestModel()
+	rendered := m.renderMenu()
+	y := lineIndexContaining(rendered, "[5]")
+	if y == -1 {
+		t.Fatalf("renderMenu() missing config entry: %q", rendered)
+	}
+
+	next, _ := m.Update(tea.MouseMsg{
+		X:      10,
+		Y:      y,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		Type:   tea.MouseLeft,
+	})
+
+	got := next.(Model)
+	if got.State != ViewConfig {
+		t.Fatalf("mouse click state = %v, want %v", got.State, ViewConfig)
+	}
+}
+
+func TestMouseClickWizardActivatesClickedEntry(t *testing.T) {
+	m := menuMouseTestModel()
+	m.State = ViewWizard
+	m.WizardStep = WizardSchemeType
+
+	rendered := m.renderWizard()
+	y := lineIndexContaining(rendered, "[2]")
+	if y == -1 {
+		t.Fatalf("renderWizard() missing enhanced scheme entry: %q", rendered)
+	}
+
+	next, _ := m.Update(tea.MouseMsg{
+		X:      10,
+		Y:      y,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		Type:   tea.MouseLeft,
+	})
+
+	got := next.(Model)
+	if got.WizardStep != WizardSchemeVariant {
+		t.Fatalf("wizard step = %v, want %v", got.WizardStep, WizardSchemeVariant)
+	}
+}
+
 func TestRenderMenuDoesNotRepeatStatusBarSummary(t *testing.T) {
 	themeMgr := theme.NewManager()
 	if err := themeMgr.SetTheme("one-dark"); err != nil {
@@ -103,6 +180,39 @@ func TestRenderMenuDoesNotRepeatStatusBarSummary(t *testing.T) {
 
 	if strings.Contains(rendered, statusBar) {
 		t.Fatalf("renderMenu() contains duplicated status bar summary: %q", statusBar)
+	}
+}
+
+func menuMouseTestModel() Model {
+	return Model{
+		Width: 80,
+		State: ViewMenu,
+		Cfg: &config.Manager{
+			Config: &types.Config{
+				SchemeType:       "base",
+				UseMirror:        true,
+				Language:         "zh-CN",
+				InstalledEngines: []string{"fcitx5"},
+			},
+		},
+		Styles: &Styles{
+			Primary:     lipgloss.Color(""),
+			Accent:      lipgloss.Color(""),
+			Border:      lipgloss.Color(""),
+			Foreground:  lipgloss.Color(""),
+			Muted:       lipgloss.Color(""),
+			Error:       lipgloss.Color(""),
+			Warning:     lipgloss.Color(""),
+			Success:     lipgloss.Color(""),
+			Secondary:   lipgloss.Color(""),
+			StatusKey:   lipgloss.NewStyle(),
+			StatusValue: lipgloss.NewStyle(),
+			Grid:        lipgloss.NewStyle(),
+			Hint:        lipgloss.NewStyle(),
+			InfoBox:     lipgloss.NewStyle(),
+			MenuItem:    lipgloss.NewStyle(),
+		},
+		RimeInstallStatus: detector.InstallationStatus{Installed: true},
 	}
 }
 
@@ -202,6 +312,17 @@ func nonEmptyLines(text string) []string {
 	}
 
 	return lines
+}
+
+func lineIndexContaining(text, needle string) int {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		if strings.Contains(line, needle) {
+			return i
+		}
+	}
+
+	return -1
 }
 
 func maxTrimmedLineWidth(text string) int {
