@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,12 +17,49 @@ import (
 	"rime-wanxiang-updater/internal/types"
 )
 
+// Debug 调试模式开关，由 --debug 启动参数控制
+var Debug bool
+
+var debugLog *log.Logger
+
+func init() {
+	debugLog = log.New(io.Discard, "[DEBUG] ", log.LstdFlags)
+}
+
+// SetDebugMode 启用或禁用调试日志输出
+func SetDebugMode(enabled bool) {
+	Debug = enabled
+	if enabled {
+		f, err := os.OpenFile("/tmp/rime-updater-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			debugLog = log.New(os.Stderr, "[DEBUG] ", log.LstdFlags)
+		} else {
+			debugLog = log.New(f, "[DEBUG] ", log.LstdFlags)
+		}
+	} else {
+		debugLog = log.New(io.Discard, "[DEBUG] ", log.LstdFlags)
+	}
+}
+
+func debugPrintln(v ...any) {
+	if Debug {
+		debugLog.Println(v...)
+	}
+}
+
+func debugPrintf(format string, v ...any) {
+	if Debug {
+		debugLog.Printf(format, v...)
+	}
+}
+
 // BaseUpdater 更新器基类
 type BaseUpdater struct {
 	Config        *config.Manager
 	APIClient     *api.Client
 	Deployer      deployer.Deployer
 	SkipTerminate bool // 是否跳过终止进程步骤（用于组合更新）
+	SkippedCache  bool // Run() 因命中缓存而跳过实际下载
 }
 
 // NewBaseUpdater 创建基础更新器
@@ -275,7 +313,12 @@ func (b *BaseUpdater) ExtractZip(src, dest string) error {
 
 // CompareHash 比较文件哈希
 func (b *BaseUpdater) CompareHash(remoteHash, filePath string) bool {
-	if remoteHash == "" || !fileutil.FileExists(filePath) {
+	if remoteHash == "" {
+		return false
+	}
+
+	info, err := os.Stat(filePath)
+	if err != nil || info.IsDir() {
 		return false
 	}
 
@@ -289,19 +332,24 @@ func (b *BaseUpdater) CompareHash(remoteHash, filePath string) bool {
 
 func hasMeaningfulUpdate(localRecord *types.UpdateRecord, updateInfo *types.UpdateInfo) bool {
 	if localRecord == nil {
+		debugPrintln("hasMeaningfulUpdate: localRecord==nil → true")
 		return true
 	}
 	if updateInfo == nil {
+		debugPrintln("hasMeaningfulUpdate: updateInfo==nil → false")
 		return false
 	}
 	if isSameTrackedAsset(localRecord, updateInfo) {
+		debugPrintln("hasMeaningfulUpdate: isSameTrackedAsset=true → false (no update)")
 		return false
 	}
 	if localRecord.Tag != "" && updateInfo.Tag != "" && localRecord.Tag != updateInfo.Tag {
+		debugPrintf("hasMeaningfulUpdate: different tags local=%q remote=%q → true", localRecord.Tag, updateInfo.Tag)
 		return true
 	}
-
-	return updateInfo.UpdateTime.After(localRecord.UpdateTime)
+	result := updateInfo.UpdateTime.After(localRecord.UpdateTime)
+	debugPrintf("hasMeaningfulUpdate: time fallback remote=%v local=%v → %v", updateInfo.UpdateTime, localRecord.UpdateTime, result)
+	return result
 }
 
 func isSameTrackedAsset(localRecord *types.UpdateRecord, updateInfo *types.UpdateInfo) bool {
@@ -309,15 +357,19 @@ func isSameTrackedAsset(localRecord *types.UpdateRecord, updateInfo *types.Updat
 		return false
 	}
 	if localRecord.Tag == "" || updateInfo.Tag == "" || localRecord.Tag != updateInfo.Tag {
+		debugPrintf("isSameTrackedAsset: tag mismatch (local=%q remote=%q) → false", localRecord.Tag, updateInfo.Tag)
 		return false
 	}
 	if updateInfo.ID != "" && localRecord.CnbID != "" && updateInfo.ID == localRecord.CnbID {
+		debugPrintf("isSameTrackedAsset: ID match %q → true", updateInfo.ID)
 		return true
 	}
 	if updateInfo.SHA256 != "" && localRecord.SHA256 != "" && updateInfo.SHA256 == localRecord.SHA256 {
+		debugPrintln("isSameTrackedAsset: SHA256 match → true")
 		return true
 	}
-
+	debugPrintf("isSameTrackedAsset: no match (remote.ID=%q local.CnbID=%q remote.SHA256=%q local.SHA256=%q) → false",
+		updateInfo.ID, localRecord.CnbID, updateInfo.SHA256, localRecord.SHA256)
 	return false
 }
 

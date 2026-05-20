@@ -96,7 +96,7 @@ type GitHubAsset struct {
 	Name               string    `json:"name"`
 	BrowserDownloadURL string    `json:"browser_download_url"`
 	UpdatedAt          time.Time `json:"updated_at,omitzero"`
-	ID                 string    `json:"-"`
+	ID                 int64     `json:"id"`
 	SHA256             string    `json:"sha256"`
 	Size               int64     `json:"size"`
 }

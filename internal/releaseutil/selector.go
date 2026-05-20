@@ -1,6 +1,10 @@
 package releaseutil
 
-import "rime-wanxiang-updater/internal/types"
+import (
+	"strconv"
+
+	"rime-wanxiang-updater/internal/types"
+)
 
 // FindPreferredAssetInfo 优先从版本化发布中选择匹配资源，
 // 找不到时再回退到指定的兜底 tag。
@@ -75,7 +79,7 @@ func findAssetInfoWithTagFilter(
 				Tag:         release.TagName,
 				Description: release.Body,
 				SHA256:      asset.SHA256,
-				ID:          asset.ID,
+				ID:          strconv.FormatInt(asset.ID, 10),
 				Size:        asset.Size,
 			}, true
 		}

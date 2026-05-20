@@ -217,7 +217,7 @@ func (c *Client) FindLatestCNBAssetInfo(
 					Tag:         release.TagName,
 					Description: release.Body,
 					SHA256:      asset.SHA256,
-					ID:          asset.ID,
+					ID:          strconv.FormatInt(asset.ID, 10),
 					Size:        asset.Size,
 				}, nil
 			}
@@ -242,7 +242,7 @@ func (c *Client) FindLatestCNBAssetInfo(
 				Tag:         release.TagName,
 				Description: release.Body,
 				SHA256:      asset.SHA256,
-				ID:          asset.ID,
+				ID:          strconv.FormatInt(asset.ID, 10),
 				Size:        asset.Size,
 			}, nil
 		}
@@ -360,11 +360,12 @@ func convertCNBReleases(
 				sha256 = cnbAsset.HashValue
 			}
 
+			id, _ := strconv.ParseInt(cnbAsset.ID, 10, 64)
 			assets = append(assets, types.GitHubAsset{
 				Name:               cnbAsset.Name,
 				BrowserDownloadURL: strings.TrimRight(baseURL, "/") + cnbAsset.Path,
 				UpdatedAt:          cnbAsset.UpdatedAt,
-				ID:                 cnbAsset.ID,
+				ID:                 id,
 				SHA256:             sha256,
 				Size:               cnbAsset.SizeInByte,
 			})

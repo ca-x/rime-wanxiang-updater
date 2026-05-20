@@ -185,7 +185,17 @@ func (c *Controller) handleUpdateDict(cmd Command) {
 			return
 		}
 
-		if err = dictUpdater.Run(progressFunc); err == nil {
+		if err = dictUpdater.Run(progressFunc); err == nil && dictUpdater.SkippedCache {
+			c.emitEvent(EvtUpdateSkipped, UpdateCompletePayload{
+				UpdateType: "词库",
+				Success:    true,
+				Skipped:    true,
+				Message:    status.Message,
+			})
+			return
+		}
+
+		if err == nil {
 			err = dictUpdater.Deploy()
 		}
 
@@ -254,7 +264,17 @@ func (c *Controller) handleUpdateScheme(cmd Command) {
 			return
 		}
 
-		if err = schemeUpdater.Run(progressFunc); err == nil {
+		if err = schemeUpdater.Run(progressFunc); err == nil && schemeUpdater.SkippedCache {
+			c.emitEvent(EvtUpdateSkipped, UpdateCompletePayload{
+				UpdateType: "方案",
+				Success:    true,
+				Skipped:    true,
+				Message:    status.Message,
+			})
+			return
+		}
+
+		if err == nil {
 			err = schemeUpdater.Deploy()
 		}
 
@@ -323,17 +343,21 @@ func (c *Controller) handleUpdateModel(cmd Command) {
 			return
 		}
 
-		if err := modelUpdater.Run(progressFunc); err == nil {
+		if err := modelUpdater.Run(progressFunc); err == nil && modelUpdater.SkippedCache {
+			c.emitEvent(EvtUpdateSkipped, UpdateCompletePayload{
+				UpdateType: "模型",
+				Success:    true,
+				Skipped:    true,
+				Message:    status.Message,
+			})
+			return
+		}
+
+		if err == nil {
 			err = modelUpdater.Deploy()
-			if err != nil {
-				c.emitEvent(EvtUpdateFailure, UpdateCompletePayload{
-					UpdateType: "模型",
-					Success:    false,
-					Message:    fmt.Sprintf("更新失败: %v", err),
-				})
-				return
-			}
-		} else {
+		}
+
+		if err != nil {
 			c.emitEvent(EvtUpdateFailure, UpdateCompletePayload{
 				UpdateType: "模型",
 				Success:    false,

@@ -205,8 +205,14 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 		progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
 			progress("方案", message, 0.05+percent*0.30, source, fileName, downloaded, total, speed, downloadMode) // 方案占 30%
 		}
+		c.SchemeUpdater.SkippedCache = false
 		if err := c.SchemeUpdater.Run(progressFunc); err != nil {
 			errors = append(errors, fmt.Sprintf("方案更新失败: %v", err))
+		} else if c.SchemeUpdater.SkippedCache {
+			result.SkippedComponents = append(result.SkippedComponents, "方案")
+			if c.SchemeUpdater.UpdateInfo != nil {
+				result.ComponentVersions["方案"] = c.SchemeUpdater.UpdateInfo.Tag
+			}
 		} else {
 			result.UpdatedComponents = append(result.UpdatedComponents, "方案")
 			if c.SchemeUpdater.UpdateInfo != nil {
@@ -221,8 +227,14 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 		progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
 			progress("词库", message, 0.35+percent*0.30, source, fileName, downloaded, total, speed, downloadMode) // 词库占 30%
 		}
+		c.DictUpdater.SkippedCache = false
 		if err := c.DictUpdater.Run(progressFunc); err != nil {
 			errors = append(errors, fmt.Sprintf("词库更新失败: %v", err))
+		} else if c.DictUpdater.SkippedCache {
+			result.SkippedComponents = append(result.SkippedComponents, "词库")
+			if c.DictUpdater.UpdateInfo != nil {
+				result.ComponentVersions["词库"] = c.DictUpdater.UpdateInfo.Tag
+			}
 		} else {
 			result.UpdatedComponents = append(result.UpdatedComponents, "词库")
 			if c.DictUpdater.UpdateInfo != nil {
@@ -237,8 +249,14 @@ func (c *CombinedUpdater) RunAllWithProgress(progress func(component, message st
 		progressFunc := func(message string, percent float64, source string, fileName string, downloaded int64, total int64, speed float64, downloadMode bool) {
 			progress("模型", message, 0.65+percent*0.25, source, fileName, downloaded, total, speed, downloadMode) // 模型占 25%
 		}
+		c.ModelUpdater.SkippedCache = false
 		if err := c.ModelUpdater.Run(progressFunc); err != nil {
 			errors = append(errors, fmt.Sprintf("模型更新失败: %v", err))
+		} else if c.ModelUpdater.SkippedCache {
+			result.SkippedComponents = append(result.SkippedComponents, "模型")
+			if c.ModelUpdater.UpdateInfo != nil {
+				result.ComponentVersions["模型"] = c.ModelUpdater.UpdateInfo.Tag
+			}
 		} else {
 			result.UpdatedComponents = append(result.UpdatedComponents, "模型")
 			if c.ModelUpdater.UpdateInfo != nil {

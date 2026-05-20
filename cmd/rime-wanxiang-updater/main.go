@@ -12,6 +12,7 @@ import (
 	"golang.org/x/term"
 	"rime-wanxiang-updater/internal/config"
 	"rime-wanxiang-updater/internal/controller"
+	"rime-wanxiang-updater/internal/updater"
 	"rime-wanxiang-updater/internal/i18n"
 	"rime-wanxiang-updater/internal/termcolor"
 	"rime-wanxiang-updater/internal/theme"
@@ -253,6 +254,14 @@ func printBootSequence(locale i18n.Locale) {
 }
 
 func main() {
+	// 解析 --debug 启动参数
+	for _, arg := range os.Args[1:] {
+		if arg == "--debug" {
+			updater.SetDebugMode(true)
+			break
+		}
+	}
+
 	// 初始化终端颜色检测（自动检测终端背景色）
 	termcolor.InitLipgloss()
 

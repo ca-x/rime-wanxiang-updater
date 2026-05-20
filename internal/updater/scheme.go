@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"rime-wanxiang-updater/internal/config"
@@ -37,7 +38,7 @@ func (s *SchemeUpdater) GetStatus() (*types.UpdateStatus, error) {
 	}
 
 	// 检查关键文件是否存在
-	keyFile := filepath.Join(s.Config.GetExtractPath(), "lua", "wanxiang.lua")
+	keyFile := filepath.Join(s.Config.GetExtractPath(), "lua", "wanxiang/version_display.lua")
 	keyFileExists := fileutil.FileExists(keyFile)
 
 	// 获取本地版本信息
@@ -157,7 +158,7 @@ func findSchemeReleaseWithTagFilter(
 				Tag:         release.TagName,
 				Description: release.Body,
 				SHA256:      asset.SHA256,
-				ID:          asset.ID,
+				ID:          strconv.FormatInt(asset.ID, 10),
 				Size:        asset.Size,
 			}, true
 		}
@@ -206,15 +207,38 @@ func (s *SchemeUpdater) Run(progress types.ProgressFunc) error {
 	recordPath := s.Config.GetSchemeRecordPath()
 	targetFile := filepath.Join(s.Config.CacheDir, s.Config.Config.SchemeFile)
 
-	// 校验本地文件：只有当版本未变化且缓存文件哈希匹配时才跳过下载
+	// 校验本地文件
 	progress("正在校验本地文件...", 0.1, "", "", 0, 0, 0, false)
 	localRecord := s.GetLocalRecord(recordPath)
+
+	// 第1关: 无版本更新 → 直接跳过（不管缓存文件是否存在）
+	if localRecord != nil && s.UpdateInfo != nil && !hasMeaningfulUpdate(localRecord, s.UpdateInfo) {
+		keyFile := filepath.Join(s.Config.GetExtractPath(), "lua", "wanxiang/version_display.lua")
+		debugPrintf("方案 Run: 第1关 hasMeaningfulUpdate=false, keyFile=%s exists=%v", keyFile, fileutil.FileExists(keyFile))
+		if fileutil.FileExists(keyFile) {
+			progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
+			s.SkippedCache = true
+			return nil
+		}
+	}
+
+	// 第2关: 缓存 zip 哈希匹配 → 跳过下载或从缓存解压
 	if s.canReuseCachedAsset(localRecord, s.UpdateInfo, targetFile, s.CompareHash) {
-		progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
-		return nil
+		keyFile := filepath.Join(s.Config.GetExtractPath(), "lua", "wanxiang/version_display.lua")
+		debugPrintf("方案 Run: 第2关 canReuseCachedAsset=true, keyFile=%s exists=%v", keyFile, fileutil.FileExists(keyFile))
+		if fileutil.FileExists(keyFile) {
+			progress("本地文件已是最新版本", 1.0, "", "", 0, 0, 0, false)
+			s.SkippedCache = true
+			return nil
+		}
+		// 缓存 zip 完好但文件缺失 → 从缓存解压，不重新下载
+		progress("文件缺失，正在从缓存恢复...", 0.7, "", "", 0, 0, 0, false)
+		debugPrintf("方案 Run: keyFile 缺失，从缓存 zip 解压 targetFile=%s", targetFile)
+		return s.applyUpdate(targetFile, targetFile, progress)
 	}
 
 	// 下载文件
+	debugPrintf("方案 Run: 两关都没拦住，开始下载 URL=%s", s.UpdateInfo.URL)
 	progress(fmt.Sprintf("准备从 %s 下载方案...", source), 0.15, source, s.UpdateInfo.URL, 0, 0, 0, false)
 	tempFile := filepath.Join(s.Config.CacheDir, fmt.Sprintf("temp_scheme_%d.zip", time.Now().Unix()))
 	if err := s.DownloadFileWithValidation(s.UpdateInfo.URL, tempFile, s.Config.Config.SchemeFile, source, s.UpdateInfo.Size, progress); err != nil {
@@ -278,13 +302,15 @@ func (s *SchemeUpdater) applyUpdate(temp, target string, progress types.Progress
 		}
 	}
 
-	// 重命名临时文件
-	progress("正在保存文件...", 0.93, "", "", 0, 0, 0, false)
-	if fileutil.FileExists(target) {
-		os.Remove(target)
-	}
-	if err := fileutil.MoveFile(temp, target); err != nil {
-		return fmt.Errorf("重命名失败: %w", err)
+	// 重命名临时文件（temp==target 时来自缓存恢复，跳过）
+	if temp != target {
+		progress("正在保存文件...", 0.93, "", "", 0, 0, 0, false)
+		if fileutil.FileExists(target) {
+			os.Remove(target)
+		}
+		if err := fileutil.MoveFile(temp, target); err != nil {
+			return fmt.Errorf("重命名失败: %w", err)
+		}
 	}
 
 	// 保存记录
