@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"rime-wanxiang-updater/internal/types"
-
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -37,7 +35,7 @@ func wizardChoiceCount(step WizardStep) int {
 	case WizardSchemeType, WizardDownloadSource:
 		return 2
 	case WizardSchemeVariant:
-		return len(types.SchemeMap)
+		return len(orderedSchemeChoices())
 	default:
 		return 0
 	}

@@ -139,6 +139,26 @@ func TestMouseClickWizardActivatesClickedEntry(t *testing.T) {
 	}
 }
 
+func TestRenderWizardSchemeVariantUsesStableNumericOrder(t *testing.T) {
+	m := menuMouseTestModel()
+	m.State = ViewWizard
+	m.WizardStep = WizardSchemeVariant
+
+	rendered := m.renderWizard()
+	wantOrder := []string{"[1]", "[2]", "[3]", "[4]", "[5]", "[6]", "[7]"}
+	last := -1
+	for _, marker := range wantOrder {
+		current := strings.Index(rendered, marker)
+		if current == -1 {
+			t.Fatalf("renderWizard() missing scheme marker %s: %q", marker, rendered)
+		}
+		if current <= last {
+			t.Fatalf("renderWizard() marker %s rendered out of order: %q", marker, rendered)
+		}
+		last = current
+	}
+}
+
 func TestRenderMenuDoesNotRepeatStatusBarSummary(t *testing.T) {
 	themeMgr := theme.NewManager()
 	if err := themeMgr.SetTheme("one-dark"); err != nil {

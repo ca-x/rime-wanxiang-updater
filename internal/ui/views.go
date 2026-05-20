@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"rime-wanxiang-updater/internal/termcolor"
-	"rime-wanxiang-updater/internal/types"
 	"rime-wanxiang-updater/internal/version"
 
 	"github.com/charmbracelet/lipgloss"
@@ -509,8 +508,8 @@ func (m Model) renderWizard() string {
 		question := m.Styles.InfoBox.Render("▸ " + m.t("wizard.variant"))
 		b.WriteString(question + "\n\n")
 
-		for k, v := range types.SchemeMap {
-			b.WriteString(m.Styles.MenuItem.Render(fmt.Sprintf("  [%s] ► %s", k, m.schemeLabel(v))) + "\n")
+		for _, choice := range orderedSchemeChoices() {
+			b.WriteString(m.Styles.MenuItem.Render(fmt.Sprintf("  [%s] ► %s", choice.key, m.schemeLabel(choice.value))) + "\n")
 		}
 
 		b.WriteString("\n" + m.Styles.Grid.Render(gridLine) + "\n")
